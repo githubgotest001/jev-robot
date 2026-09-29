@@ -177,6 +177,8 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 11px;
+  /* 宽屏下限制内容宽度并左对齐，避免概率条被拉成横贯整屏的长条 */
+  max-width: 560px;
 }
 
 .decision-head {
@@ -249,7 +251,8 @@ textarea {
 
 .prob-row {
   display: grid;
-  grid-template-columns: 88px 1fr 34px;
+  /* 标签定宽、数值定宽，中间轨道自适应；max-width 防止宽屏拉成横条 */
+  grid-template-columns: minmax(60px, 96px) minmax(0, 1fr) 40px;
   align-items: center;
   gap: 7px;
 }
@@ -295,7 +298,7 @@ textarea {
 
 .noul {
   display: grid;
-  grid-template-columns: 128px 1fr 34px;
+  grid-template-columns: minmax(80px, 132px) minmax(0, 1fr) 40px;
   align-items: center;
   gap: 7px;
 }
