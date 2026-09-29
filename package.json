@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "node scripts/check-css.mjs && tsc -b && vite build",
+    "check:css": "node scripts/check-css.mjs",
     "lint": "oxlint",
     "preview": "vite preview",
     "proxy": "node server/proxy.mjs"

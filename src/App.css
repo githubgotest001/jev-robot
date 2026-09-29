@@ -131,6 +131,7 @@ textarea {
     grid-auto-rows: minmax(420px, auto);
     overflow-y: auto;
   }
+}
 
 /* ───────────── 通用面板 ───────────── */
 .panel-header {
@@ -360,8 +361,6 @@ textarea {
   font-variant-numeric: tabular-nums;
   color: var(--text-dim);
   text-align: right;
-}
-
 }
 
 .decision-foot {
