@@ -1,12 +1,12 @@
-import type { PlannedAction, QuickChoice } from '../domain/types';
-import { filterActions, planClarification, planFallback, planForIntent, planRefusal } from './actionRouter';
-import type { PlanContext } from './actionRouter';
+﻿import type { PlannedAction, QuickChoice } from '../domain/types';
+import { planClarification, planFallback, planForIntent, planRefusal } from './actionRouter';
+import type { GestureStyle, PlanContext } from './actionRouter';
 import { JevClient, JevError } from './jevClient';
 import type { JevClientConfig } from './jevClient';
 import { QUESTION_IDS, buildJevRequest, toRobotIntent } from './robotQuestions';
 import type { RobotContext, RobotIntent } from './robotQuestions';
-import { asChoiceAnswer, asNoulAnswer, asScoreAnswer } from './jevTypes';
-import type { JevChoiceAnswer, JevScoreAnswer } from './jevTypes';
+import { asChoiceAnswer, asNoulAnswer } from './jevTypes';
+import type { JevAnswer, JevChoiceAnswer } from './jevTypes';
 
 export type DecisionMode = 'jev' | 'fallback';
 
@@ -14,7 +14,7 @@ export type DecisionMode = 'jev' | 'fallback';
  * 决策阈值策略。
  *
  * Jev 的 confidence 反映分布集中度而非正确性，
- * 阈值必须由应用按自身风险自定。这里给出三档：
+ * 阈值必须由应用按自身风险自定：
  * - >= autoActThreshold：直接执行
  * - >= reviewThreshold：先反问确认
  * - 低于 reviewThreshold：按 unknown 处理并给引导选项
@@ -24,22 +24,20 @@ export interface DecisionPolicy {
   reviewThreshold: number;
   /** safe_to_execute 的 noul 低于此值则判定为不安全 */
   safetyThreshold: number;
-  /** needs_clarification 的 noul 高于此值则先反问 */
-  clarificationThreshold: number;
 }
 
 export const DEFAULT_POLICY: DecisionPolicy = {
   autoActThreshold: 0.7,
   reviewThreshold: 0.45,
   safetyThreshold: 0.6,
-  clarificationThreshold: 0.65,
 };
 
-/** 决策结果：动作编排 + Jev 的原始判定，供 UI 展示 */
 export interface JevDecisionResult {
   utterance: string;
   intent: RobotIntent;
   emotion: string;
+  /** Jev 判定的表现风格 */
+  style: GestureStyle;
   /** 是否实际执行了动作编排 */
   executed: boolean;
   actions: PlannedAction[];
@@ -47,9 +45,7 @@ export interface JevDecisionResult {
   raw: {
     intent?: JevChoiceAnswer;
     safeToExecute?: { noul: number };
-    urgency?: JevScoreAnswer;
-    needsClarification?: { noul: number };
-    emotion?: JevChoiceAnswer;
+    gestureStyle?: JevChoiceAnswer;
   };
   /** 决策路径说明 */
   trace: string[];
@@ -64,6 +60,136 @@ export interface JevProviderOptions {
   client: JevClientConfig;
   policy?: Partial<DecisionPolicy>;
   model?: string;
+}
+
+// ─────────────────────── 纯函数：判定解析 ───────────────────────
+
+/** 把 Jev 的 choice 收敛到受支持的意图枚举 */
+function resolveIntentValue(
+  choice: string | undefined,
+  probabilities: Record<string, number> | undefined,
+): RobotIntent {
+  if (choice && toRobotIntent(choice) !== 'unknown') return choice as RobotIntent;
+  if (probabilities) {
+    const best = Object.entries(probabilities)
+      .filter(([k]) => toRobotIntent(k) !== 'unknown')
+      .sort((a, b) => b[1] - a[1])[0];
+    if (best) return best[0] as RobotIntent;
+  }
+  return 'unknown';
+}
+
+/** 收敛表现风格，非法值回落 normal */
+function resolveStyleValue(choice: string | undefined): GestureStyle {
+  const valid: GestureStyle[] = ['gentle', 'normal', 'lively', 'solemn'];
+  if (choice && (valid as string[]).includes(choice)) return choice as GestureStyle;
+  return 'normal';
+}
+
+/**
+ * 由意图与风格推导情绪。
+ * 情绪不再向 Jev 单独提问——意图本身已隐含情绪倾向，
+ * 风格只调节表现力度，不改变情绪本身。
+ */
+function emotionForIntent(intent: RobotIntent, style: GestureStyle): string {
+  const base: Partial<Record<RobotIntent, string>> = {
+    greet: 'happy',
+    goodbye: 'sad',
+    stop: 'neutral',
+    deny: 'neutral',
+    joke: 'excited',
+    dance: 'joy',
+    hug: 'happy',
+    praise: 'excited',
+    encourage: 'excited',
+    wake: 'excited',
+    sleep: 'sleepy',
+    unknown: 'confused',
+    think: 'focus',
+    bored: 'sleepy',
+  };
+  const emotion = base[intent] ?? 'neutral';
+  if (style === 'solemn' && (emotion === 'joy' || emotion === 'excited')) return 'happy';
+  return emotion;
+}
+
+export interface RoutedDecision {
+  plan: { utterance: string; actions: PlannedAction[]; choices: QuickChoice[] };
+  intent: RobotIntent;
+  emotion: string;
+  style: GestureStyle;
+  executed: boolean;
+  raw: JevDecisionResult['raw'];
+}
+
+/**
+ * 把 Jev 的原始答案路由为动作编排——决策的核心。
+ *
+ * Mock 与真实模式共用这一份实现：传输方式不同，
+ * 但从答案到动作的判定逻辑必须完全一致，
+ * 否则 Mock 下调通的分支在真实模式下会失效。
+ */
+export function routeAnswers(
+  answers: Record<string, JevAnswer>,
+  ctx: RobotContext,
+  policy: DecisionPolicy,
+  trace: string[],
+): RoutedDecision {
+  const intentAnswer = asChoiceAnswer(answers[QUESTION_IDS.intent]);
+  const safetyAnswer = asNoulAnswer(answers[QUESTION_IDS.safeToExecute]);
+  const styleAnswer = asChoiceAnswer(answers[QUESTION_IDS.gestureStyle]);
+
+  const intent = resolveIntentValue(intentAnswer?.choice, intentAnswer?.probabilities);
+  const confidence = intentAnswer?.confidence ?? 0;
+  trace.push('意图 ' + intent + ' · confidence ' + confidence.toFixed(2));
+
+  const style = resolveStyleValue(styleAnswer?.choice);
+  const emotion = emotionForIntent(intent, style);
+  trace.push('风格 ' + style + ' · 情绪 ' + emotion);
+
+  const safeToExecute = safetyAnswer?.noul ?? 1;
+  trace.push('安全 noul=' + safeToExecute.toFixed(2));
+
+  const planCtx: PlanContext = {
+    battery: ctx.battery,
+    busy: ctx.busy,
+    hardware: ctx.hardware,
+    holdingObject: false,
+    style,
+  };
+
+  let plan: { utterance: string; actions: PlannedAction[]; choices: QuickChoice[] };
+  let executed = true;
+
+  // 决策顺序：安全 > 置信度 > 执行
+  // 不确定性由 intent 的 confidence 直接表达，无需独立问题
+  if (safeToExecute < policy.safetyThreshold) {
+    trace.push('路径：安全闸门拦截');
+    plan = planRefusal(intent, planCtx);
+    executed = false;
+  } else if (confidence < policy.reviewThreshold) {
+    trace.push('路径：置信度过低，按未知意图处理');
+    plan = planForIntent('unknown', emotion, planCtx);
+  } else if (confidence < policy.autoActThreshold) {
+    trace.push('路径：置信度中等，反问确认');
+    plan = planClarification();
+  } else {
+    trace.push('路径：直接执行 ' + intent);
+    plan = planForIntent(intent, emotion, planCtx);
+  }
+
+  return {
+    plan,
+    intent,
+    emotion,
+    style,
+    executed,
+    raw: {
+      intent: intentAnswer ?? undefined,
+      safeToExecute: safetyAnswer ?? undefined,
+      gestureStyle: styleAnswer ?? undefined,
+    },
+  };
 }
 
 /**
@@ -84,7 +210,7 @@ export class JevDecisionProvider {
   }
 
   get label(): string {
-    return `Jev ${this.model}`;
+    return 'Jev ' + this.model;
   }
 
   async decide(ctx: RobotContext): Promise<JevDecisionResult> {
@@ -97,72 +223,19 @@ export class JevDecisionProvider {
     try {
       const response = await this.client.evaluate(request);
       const latencyMs = Math.round(performance.now() - started);
-      const answers = response.answers;
 
-      const intentAnswer = asChoiceAnswer(answers[QUESTION_IDS.intent]);
-      const safetyAnswer = asNoulAnswer(answers[QUESTION_IDS.safeToExecute]);
-      const urgencyAnswer = asScoreAnswer(answers[QUESTION_IDS.responseUrgency]);
-      const clarifyAnswer = asNoulAnswer(answers[QUESTION_IDS.needsClarification]);
-      const emotionAnswer = asChoiceAnswer(answers[QUESTION_IDS.emotion]);
-
-      trace.push(`模型 ${response.model}`);
-
-      const intent = this.resolveIntent(intentAnswer);
-      trace.push(`意图 ${intent} · confidence ${(intentAnswer?.confidence ?? 0).toFixed(2)}`);
-
-      const emotion = this.resolveEmotion(emotionAnswer, intent);
-      const urgency = urgencyAnswer?.score ?? 1;
-      trace.push(`情绪 ${emotion} · 紧急度 ${urgency.toFixed(2)}`);
-
-      const planCtx: PlanContext = {
-        battery: ctx.battery,
-        busy: ctx.busy,
-        hardware: ctx.hardware,
-        holdingObject: false,
-      };
-
-      const confidence = intentAnswer?.confidence ?? 0;
-      const safeToExecute = safetyAnswer?.noul ?? 1;
-      const needsClarification = clarifyAnswer?.noul ?? 0;
-      trace.push(`安全 noul=${safeToExecute.toFixed(2)} · 需澄清 noul=${needsClarification.toFixed(2)}`);
-
-      let plan: { utterance: string; actions: PlannedAction[]; choices: QuickChoice[] };
-      let executed = true;
-
-      if (needsClarification >= this.policy.clarificationThreshold) {
-        trace.push('路径：信息不足，先反问');
-        plan = planClarification();
-      } else if (safeToExecute < this.policy.safetyThreshold) {
-        trace.push('路径：安全闸门拦截');
-        plan = planRefusal(intent, planCtx);
-        executed = false;
-      } else if (confidence < this.policy.reviewThreshold) {
-        trace.push('路径：置信度过低，按未知意图处理');
-        plan = planForIntent('unknown', emotion, planCtx);
-      } else if (confidence < this.policy.autoActThreshold) {
-        trace.push('路径：置信度中等，反问确认');
-        plan = planClarification();
-      } else {
-        trace.push(`路径：直接执行 ${intent}`);
-        plan = planForIntent(intent, emotion, planCtx);
-      }
-
-      const actions = plan.actions.length > 0 ? plan.actions : filterActions([], planCtx);
+      trace.push('模型 ' + response.model);
+      const routed = routeAnswers(response.answers, ctx, this.policy, trace);
 
       return {
-        utterance: plan.utterance,
-        intent,
-        emotion,
-        executed,
-        actions,
-        choices: plan.choices,
-        raw: {
-          intent: intentAnswer ?? undefined,
-          safeToExecute: safetyAnswer ?? undefined,
-          urgency: urgencyAnswer ?? undefined,
-          needsClarification: clarifyAnswer ?? undefined,
-          emotion: emotionAnswer ?? undefined,
-        },
+        utterance: routed.plan.utterance,
+        intent: routed.intent,
+        emotion: routed.emotion,
+        style: routed.style,
+        executed: routed.executed,
+        actions: routed.plan.actions,
+        choices: routed.plan.choices,
+        raw: routed.raw,
         trace,
         mode: 'jev',
         usage: {
@@ -175,13 +248,14 @@ export class JevDecisionProvider {
       };
     } catch (err) {
       const message =
-        err instanceof JevError ? `${err.message} (HTTP ${err.status})` : String(err);
-      trace.push(`Jev 调用失败，降级到本地规则：${message}`);
+        err instanceof JevError ? err.message + ' (HTTP ' + err.status + ')' : String(err);
+      trace.push('Jev 调用失败，降级到本地规则：' + message);
       const plan = planFallback();
       return {
         utterance: plan.utterance,
         intent: 'unknown',
         emotion: 'confused',
+        style: 'normal',
         executed: true,
         actions: plan.actions,
         choices: plan.choices,
@@ -192,36 +266,5 @@ export class JevDecisionProvider {
         error: message,
       };
     }
-  }
-
-  /** 把 Jev 返回的 choice 收敛到受支持的意图枚举 */
-  private resolveIntent(answer: JevChoiceAnswer | null): RobotIntent {
-    if (answer?.choice && toRobotIntent(answer.choice) !== 'unknown') {
-      return answer.choice as RobotIntent;
-    }
-    if (answer?.probabilities) {
-      const best = Object.entries(answer.probabilities)
-        .filter(([k]) => toRobotIntent(k) !== 'unknown')
-        .sort((a, b) => b[1] - a[1])[0];
-      if (best) return best[0] as RobotIntent;
-    }
-    return 'unknown';
-  }
-
-  private resolveEmotion(answer: JevChoiceAnswer | null, intent: RobotIntent): string {
-    const key = answer?.choice;
-    const valid = ['neutral', 'happy', 'excited', 'curious', 'confused', 'sad', 'angry', 'sleepy', 'focus'];
-    if (key && valid.includes(key)) return key;
-    const FALLBACK: Partial<Record<RobotIntent, string>> = {
-      greet: 'happy',
-      goodbye: 'sad',
-      stop: 'neutral',
-      joke: 'excited',
-      dance: 'excited',
-      sleep: 'sleepy',
-      unknown: 'confused',
-      think: 'focus',
-    };
-    return FALLBACK[intent] ?? 'neutral';
   }
 }

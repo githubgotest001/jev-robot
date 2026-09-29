@@ -1,11 +1,6 @@
 import { NEUTRAL_POSE, ROBOT_SPEC } from '../domain/robotSpec';
 import type { ChatMessage, Pose } from '../domain/types';
-import type {
-  JevChoiceQuestion,
-  JevNoulQuestion,
-  JevRequest,
-  JevScoreQuestion,
-} from './jevTypes';
+import type { JevChoiceQuestion, JevNoulQuestion, JevRequest } from './jevTypes';
 
 /**
  * 机器人指令意图枚举。
@@ -54,13 +49,25 @@ export function toRobotIntent(value: unknown): RobotIntent {
     : 'unknown';
 }
 
-/** Jev 一次决策所问问题的 key，与响应 answers 的 key 一一对应 */
+/**
+ * Jev 一次决策所问的问题。
+ *
+ * 设计原则：三个问题各自独立、无冗余，共同覆盖决策所需的全部信息。
+ * 官方文档明确指出"各问题的含义必须彼此独立"，因此不做重复提问——
+ *
+ * - intent (choice)      用户想要什么。不确定性由 probabilities 与 confidence 表达，
+ *                        无需再单独问一次"信息是否充分"。
+ * - safe_to_execute (noul) 能不能做。硬件/电量/安全的闸门，与 intent 完全正交。
+ * - gesture_style (choice) 怎么回应。同样正交：同一个意图可以有不同表现力，
+ *                        例如"跳舞"可以轻快也可以夸张。
+ *
+ * 情绪不再单独提问：意图本身已隐含情绪（greet→happy、dance→joy），
+ * 由 gesture_style 承担表现层的选择，避免重复消耗决策预算。
+ */
 export const QUESTION_IDS = {
   intent: 'intent',
   safeToExecute: 'safe_to_execute',
-  responseUrgency: 'response_urgency',
-  needsClarification: 'needs_clarification',
-  emotion: 'emotion',
+  gestureStyle: 'gesture_style',
 } as const;
 
 /** 决策所需的机器人上下文 */
@@ -194,57 +201,29 @@ export function buildSafetyQuestion(): JevNoulQuestion {
   };
 }
 
-/** 响应紧急度：Score，三档有序 */
-export function buildUrgencyQuestion(): JevScoreQuestion {
-  return {
-    type: 'score',
-    instructions:
-      '根据 `user_speech` 判断机器人应以多快的速度作出反应。' +
-      '用户语气急迫、要求立刻停止或涉及安全时为最高档；' +
-      '普通请求为中档；闲聊、打发时间可以慢慢来。',
-    criteria: [
-      '可以稍后回应，例如闲聊、打发时间',
-      '正常速度回应，例如普通请求',
-      '立即回应，例如用户催促、要求立刻停止或涉及安全',
-    ],
-  };
-}
-
-/** 澄清需求：Noul，判断是否应先反问用户 */
-export function buildClarificationQuestion(): JevNoulQuestion {
-  return {
-    type: 'noul',
-    instructions:
-      '判断当前信息是否足以确定用户意图。' +
-      '若 `user_speech` 含糊、多义、缺少必要参数（如要看向哪个方向、要拿什么），' +
-      '则答案为是——此时机器人应先反问确认，而不是直接执行。',
-    criteria: {
-      true: '信息不足或含糊，需要向用户反问确认',
-      false: '信息充分，可以直接执行',
-    },
-  };
-}
-
-/** 情绪判定：Choice，用于选择表情与动作风格 */
-export function buildEmotionQuestion(): JevChoiceQuestion {
+/**
+ * 表现风格：Choice。
+ *
+ * 与 intent 正交——同一个意图可以有不同表现力。
+ * 决定表情与动作的"力度"，不决定"做什么"。
+ */
+export function buildGestureStyleQuestion(): JevChoiceQuestion {
   return {
     type: 'choice',
-    instructions: '根据 `user_speech` 的语气和 `user_emotion`，判断机器人应以什么情绪回应。',
+    instructions:
+      '判断机器人执行 `intent` 时应采用的表现风格。' +
+      '结合 `user_speech` 的语气、`user_emotion` 以及对话氛围判断力度，' +
+      '不要因为意图相同就总是选同一项——同一个意图在不同语境下可以有不同表现。',
     criteria: {
-      neutral: '中性、平静的日常回应',
-      happy: '愉快、亲切的回应',
-      excited: '兴奋、充满活力的回应',
-      curious: '好奇、想了解更多的回应',
-      confused: '困惑、不确定该如何理解',
-      sad: '低落、安慰性的回应',
-      angry: '生气或不满的回应',
-      sleepy: '困倦、慢悠悠的回应',
-      focus: '专注、认真执行的回应',
+      gentle: '轻柔克制的表现，动作幅度小，如道谢、致歉、安抚',
+      normal: '自然日常的表现，大多数普通请求',
+      lively: '活泼有活力的表现，动作幅度大，如跳舞、玩耍、庆祝',
+      solemn: '庄重郑重的表现，用于正式或重要场合',
     },
   };
 }
 
-/** 组装完整请求：五个问题一次并行评估 */
+/** 组装完整请求：三个正交问题一次并行评估 */
 export function buildJevRequest(ctx: RobotContext): JevRequest {
   return {
     model: 'typesafe/jev-1.13',
@@ -252,9 +231,7 @@ export function buildJevRequest(ctx: RobotContext): JevRequest {
     questions: {
       [QUESTION_IDS.intent]: buildIntentQuestion(),
       [QUESTION_IDS.safeToExecute]: buildSafetyQuestion(),
-      [QUESTION_IDS.responseUrgency]: buildUrgencyQuestion(),
-      [QUESTION_IDS.needsClarification]: buildClarificationQuestion(),
-      [QUESTION_IDS.emotion]: buildEmotionQuestion(),
+      [QUESTION_IDS.gestureStyle]: buildGestureStyleQuestion(),
     },
   };
 }

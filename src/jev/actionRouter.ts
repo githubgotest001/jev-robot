@@ -9,6 +9,12 @@ import type { RobotIntent } from './robotQuestions';
  * 好处是行为可预测、可测试、可调参，且不依赖任何生成式输出。
  */
 
+/**
+ * 表现风格，由 Jev 的 gesture_style 判定。
+ * 与意图正交：决定动作力度与表情，不决定做什么。
+ */
+export type GestureStyle = 'gentle' | 'normal' | 'lively' | 'solemn';
+
 export interface PlanContext {
   battery: number;
   busy: boolean;
@@ -20,6 +26,37 @@ export interface PlanContext {
   };
   /** 当前是否手持物体，影响 put_down 的编排 */
   holdingObject: boolean;
+  /** 表现风格，影响动作幅度与时长缩放 */
+  style: GestureStyle;
+}
+
+/** 各风格对应的时长缩放：gentle 收敛、lively 放大 */
+const STYLE_SCALE: Record<GestureStyle, number> = {
+  gentle: 0.8,
+  normal: 1,
+  lively: 1.15,
+  solemn: 0.9,
+};
+
+/** 风格对应的表情增强：lively 更生动，gentle 更柔和 */
+const STYLE_EMOTION: Record<GestureStyle, string | null> = {
+  gentle: null,
+  normal: null,
+  lively: 'excited',
+  solemn: null,
+};
+
+/** 按风格缩放编排中所有动作的时长 */
+function applyStyle(
+  actions: PlannedAction[],
+  style: GestureStyle,
+): PlannedAction[] {
+  const scale = STYLE_SCALE[style];
+  if (scale === 1) return actions;
+  return actions.map((a) => ({
+    ...a,
+    durationScale: (a.durationScale ?? 1) * scale,
+  }));
 }
 
 interface IntentPlan {
@@ -366,12 +403,25 @@ export function planForIntent(
 ): { utterance: string; actions: PlannedAction[]; choices: QuickChoice[] } {
   const plan = PLANS[intent] ?? PLANS.unknown;
   const rawActions = plan.actions(ctx);
-  // 编排里已显式指定表情时尊重编排，否则按 Jev 判定的情绪补一个
+  // 编排里已显式指定表情时尊重编排，否则按推导出的情绪补一个
   const hasExplicitExpr = rawActions.some((a) => a.actionId === 'screen.set_expression');
   const filtered = filterActions(rawActions, ctx);
-  const actions = hasExplicitExpr ? filtered : [emotionAction(emotion), ...filtered];
+  const withEmotion = hasExplicitExpr
+    ? filtered
+    : [emotionAction(emotion), ...filtered];
 
-  return { utterance: plan.utterance, actions, choices: plan.choices(ctx) };
+  // lively 风格额外补一个更生动的表情
+  const styleEmotion = STYLE_EMOTION[ctx.style];
+  const withStyle =
+    styleEmotion && !hasExplicitExpr
+      ? [emotionAction(styleEmotion), ...withEmotion]
+      : withEmotion;
+
+  return {
+    utterance: plan.utterance,
+    actions: applyStyle(withStyle, ctx.style),
+    choices: plan.choices(ctx),
+  };
 }
 
 /** 安全闸门拦截时的编排：只做拒绝表情，不执行主动作 */

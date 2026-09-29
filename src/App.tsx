@@ -4,18 +4,13 @@ import { SimulationEngine } from './engine/simulationEngine';
 import type { EngineSnapshot } from './engine/simulationEngine';
 import { loadConfig, sanitizeConfig } from './jev/config';
 import type { JevConfig } from './jev/config';
-import { JevDecisionProvider } from './jev/jevProvider';
+import { JevDecisionProvider, routeAnswers } from './jev/jevProvider';
 import type { JevDecisionResult } from './jev/jevProvider';
-import { buildJevRequest, defaultRobotContext, toRobotIntent } from './jev/robotQuestions';
+import { buildJevRequest, defaultRobotContext } from './jev/robotQuestions';
 import type { RobotContext } from './jev/robotQuestions';
 import { mockJevEvaluate } from './jev/mockJev';
 import { fetchProxyConfig, mergeProxyConfig } from './jev/proxyConfig';
-import {
-  planClarification,
-  planFallback,
-  planForIntent,
-  planRefusal,
-} from './jev/actionRouter';
+import { planFallback } from './jev/actionRouter';
 import { ChatPanel } from './ui/ChatPanel';
 import { ConfigPanel } from './ui/ConfigPanel';
 import { RobotStage } from './ui/RobotStage';
@@ -88,8 +83,6 @@ export default function App() {
     return () => cancelAnimationFrame(raf);
   }, [engine]);
 
-  const busy = deciding || snapshot.busy;
-
   /** 组装传给 Jev 的机器人上下文 */
   const buildContext = useCallback(
     (utterance: string, history: ChatMessage[]): RobotContext =>
@@ -153,73 +146,22 @@ export default function App() {
         if (provider) {
           applyDecision(await provider.decide(ctx));
         } else {
-          // Mock 模式：构造与 Jev 同形状的响应，再走同一套判定策略
+          // Mock 模式：本地构造与 Jev 同形状的响应，
+          // 之后走与真实模式完全相同的 routeAnswers，保证分支一致
           const request = buildJevRequest(ctx);
           const response = mockJevEvaluate(request);
-          const policy = sanitized.policy;
-
-          const intentRaw = response.answers.intent;
-          const safetyRaw = response.answers.safe_to_execute;
-          const clarifyRaw = response.answers.needs_clarification;
-          const emotionRaw = response.answers.emotion;
-          const urgencyRaw = response.answers.response_urgency;
-
-          const intentKey = toRobotIntent(
-            intentRaw?.type === 'choice' ? intentRaw.choice : 'unknown',
-          );
-          const confidence = intentRaw?.type === 'choice' ? intentRaw.confidence : 0;
-          const safeNoul = safetyRaw?.type === 'noul' ? safetyRaw.noul : 1;
-          const clarifyNoul = clarifyRaw?.type === 'noul' ? clarifyRaw.noul : 0;
-          const emotionKey =
-            emotionRaw?.type === 'choice' ? emotionRaw.choice : 'neutral';
-
-          const planCtx = {
-            battery: ctx.battery,
-            busy: ctx.busy,
-            hardware: ctx.hardware,
-            holdingObject: false,
-          };
-
           const trace: string[] = [`模型 ${response.model} (Mock)`];
-          let plan: ReturnType<typeof planForIntent>;
-          let executed = true;
-
-          if (clarifyNoul >= policy.clarificationThreshold) {
-            trace.push('路径：信息不足，先反问');
-            plan = planClarification();
-          } else if (safeNoul < policy.safetyThreshold) {
-            trace.push('路径：安全闸门拦截');
-            plan = planRefusal(intentKey, planCtx);
-            executed = false;
-          } else if (confidence < policy.reviewThreshold) {
-            trace.push('路径：置信度过低，按未知意图处理');
-            plan = planForIntent('unknown', emotionKey, planCtx);
-          } else if (confidence < policy.autoActThreshold) {
-            trace.push('路径：置信度中等，反问确认');
-            plan = planClarification();
-          } else {
-            trace.push(`路径：直接执行 ${intentKey}`);
-            plan = planForIntent(intentKey, emotionKey, planCtx);
-          }
-
-          trace.push(
-            `intent conf=${confidence.toFixed(2)} safe noul=${safeNoul.toFixed(2)} clarify noul=${clarifyNoul.toFixed(2)}`,
-          );
+          const routed = routeAnswers(response.answers, ctx, sanitized.policy, trace);
 
           applyDecision({
-            utterance: plan.utterance,
-            intent: intentKey,
-            emotion: emotionKey,
-            executed,
-            actions: plan.actions,
-            choices: plan.choices,
-            raw: {
-              intent: intentRaw?.type === 'choice' ? intentRaw : undefined,
-              safeToExecute: safetyRaw?.type === 'noul' ? safetyRaw : undefined,
-              urgency: urgencyRaw?.type === 'score' ? urgencyRaw : undefined,
-              needsClarification: clarifyRaw?.type === 'noul' ? clarifyRaw : undefined,
-              emotion: emotionRaw?.type === 'choice' ? emotionRaw : undefined,
-            },
+            utterance: routed.plan.utterance,
+            intent: routed.intent,
+            emotion: routed.emotion,
+            style: routed.style,
+            executed: routed.executed,
+            actions: routed.plan.actions,
+            choices: routed.plan.choices,
+            raw: routed.raw,
             trace,
             mode: 'jev',
             usage: {
@@ -237,6 +179,7 @@ export default function App() {
           utterance: plan.utterance,
           intent: 'unknown',
           emotion: 'confused',
+          style: 'normal',
           executed: true,
           actions: plan.actions,
           choices: plan.choices,
@@ -313,7 +256,8 @@ export default function App() {
           {tab === 'chat' ? (
             <ChatPanel
               messages={messages}
-              busy={busy}
+              busy={snapshot.busy}
+              deciding={deciding}
               showReasoning={sanitized.showDebug}
               onSend={handleSend}
               onAbort={handleAbort}

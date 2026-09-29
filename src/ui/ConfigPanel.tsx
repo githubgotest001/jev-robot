@@ -312,20 +312,6 @@ export function ConfigPanel({ config, onChange }: ConfigPanelProps) {
             />
           </label>
 
-          <label className="field">
-            <span>
-              澄清阈值 · {draft.policy.clarificationThreshold.toFixed(2)}
-              <em className="tip">needs_clarification 的 noul 高于此值则先反问</em>
-            </span>
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.05}
-              value={draft.policy.clarificationThreshold}
-              onChange={(e) => patchPolicy('clarificationThreshold', Number(e.target.value))}
-            />
-          </label>
         </fieldset>
 
         <fieldset>

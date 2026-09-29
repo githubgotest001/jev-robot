@@ -59,24 +59,14 @@ const request = {
       instructions: '结合 `robot_status`、`hardware`、`safety_flags` 和 `environment`，判断机器人当前是否能够安全执行 `intent` 所选的动作。',
       criteria: { true: '环境安全，机器人状态与硬件均允许执行该动作', false: '存在安全风险，或机器人当前无法执行该动作' }
     },
-    response_urgency: {
-      type: 'score',
-      instructions: '根据 `user_speech` 判断机器人应以多快的速度作出反应。',
-      criteria: ['可以稍后回应', '正常速度回应', '立即回应']
-    },
-    needs_clarification: {
-      type: 'noul',
-      instructions: '判断当前信息是否足以确定用户意图。若 `user_speech` 含糊、多义、缺少必要参数，则答案为是。',
-      criteria: { true: '信息不足或含糊，需要向用户反问确认', false: '信息充分，可以直接执行' }
-    },
-    emotion: {
+    gesture_style: {
       type: 'choice',
-      instructions: '根据 `user_speech` 的语气和 `user_emotion`，判断机器人应以什么情绪回应。',
+      instructions: '判断机器人执行 `intent` 时应采用的表现风格。结合 `user_speech` 的语气与对话氛围判断力度。',
       criteria: {
-        neutral: '中性、平静的日常回应', happy: '愉快、亲切的回应',
-        excited: '兴奋、充满活力的回应', curious: '好奇、想了解更多的回应',
-        confused: '困惑、不确定该如何理解', sad: '低落、安慰性的回应',
-        angry: '生气或不满的回应', sleepy: '困倦、慢悠悠的回应', focus: '专注、认真执行的回应'
+        gentle: '轻柔克制的表现，动作幅度小，如道谢、致歉、安抚',
+        normal: '自然日常的表现，大多数普通请求',
+        lively: '活泼有活力的表现，动作幅度大，如跳舞、玩耍、庆祝',
+        solemn: '庄重郑重的表现，用于正式或重要场合'
       }
     }
   }

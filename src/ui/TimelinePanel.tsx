@@ -111,6 +111,10 @@ function DecisionView({ decision }: { decision: JevDecisionResult }) {
           <b>{decision.intent}</b>
         </div>
         <div className="intent-tag">
+          <em>style</em>
+          <b>{decision.style}</b>
+        </div>
+        <div className="intent-tag">
           <em>emotion</em>
           <b>{decision.emotion}</b>
         </div>
@@ -137,59 +141,22 @@ function DecisionView({ decision }: { decision: JevDecisionResult }) {
         </div>
       )}
 
-      {raw.emotion && (
+      {raw.gestureStyle && (
         <div className="prob-block">
           <h5>
-            emotion 概率分布
-            <span className="conf">confidence {raw.emotion.confidence.toFixed(2)}</span>
+            gesture_style 概率分布
+            <span className="conf">confidence {raw.gestureStyle.confidence.toFixed(2)}</span>
           </h5>
           <ProbBars
-            probabilities={raw.emotion.probabilities}
-            highlight={raw.emotion.choice}
-            max={5}
+            probabilities={raw.gestureStyle.probabilities}
+            highlight={raw.gestureStyle.choice}
+            max={4}
           />
         </div>
       )}
 
-      <div className="noul-row">
-        {raw.safeToExecute && (
-          <NoulGauge
-            label="safe_to_execute"
-            value={raw.safeToExecute.noul}
-            positiveIsGood
-          />
-        )}
-        {raw.needsClarification && (
-          <NoulGauge
-            label="needs_clarification"
-            value={raw.needsClarification.noul}
-            positiveIsGood={false}
-          />
-        )}
-      </div>
-
-      {raw.urgency && (
-        <div className="score-block">
-          <h5>
-            response_urgency
-            <span className="conf">score {raw.urgency.score.toFixed(2)}</span>
-          </h5>
-          <div className="score-scale">
-            {Object.entries(raw.urgency.probabilities).map(([level, prob]) => {
-              const label = raw.urgency?.legend[level] ?? level;
-              return (
-                <div
-                  key={level}
-                  className={`score-level ${prob > 0.5 ? 'active' : ''}`}
-                  title={`${label}: ${prob.toFixed(2)}`}
-                >
-                  <b>{level}</b>
-                  <span>{label}</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+      {raw.safeToExecute && (
+        <NoulGauge label="safe_to_execute" value={raw.safeToExecute.noul} positiveIsGood />
       )}
 
       <div className="decision-foot">

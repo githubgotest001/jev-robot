@@ -131,7 +131,6 @@ textarea {
     grid-auto-rows: minmax(420px, auto);
     overflow-y: auto;
   }
-}
 
 /* ───────────── 通用面板 ───────────── */
 .panel-header {
@@ -167,9 +166,11 @@ textarea {
 .decision-pane {
   padding: 12px 14px;
   border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-  max-height: 52%;
+  flex: 0 1 auto;
+  max-height: 46%;
+  min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .decision-body {
@@ -224,8 +225,7 @@ textarea {
   line-height: 1.7;
 }
 
-.prob-block h5,
-.score-block h5 {
+.prob-block h5 {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
@@ -293,12 +293,6 @@ textarea {
   text-align: right;
 }
 
-.noul-row {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
 .noul {
   display: grid;
   grid-template-columns: 128px 1fr 34px;
@@ -339,45 +333,6 @@ textarea {
   text-align: right;
 }
 
-.score-scale {
-  display: flex;
-  gap: 4px;
-}
-
-.score-level {
-  flex: 1;
-  padding: 4px 5px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--panel-2);
-  min-width: 0;
-}
-
-.score-level.active {
-  border-color: var(--accent);
-  background: rgba(94, 234, 212, 0.08);
-}
-
-.score-level b {
-  display: block;
-  font-size: 10px;
-  color: var(--text-dim);
-  font-variant-numeric: tabular-nums;
-}
-
-.score-level.active b {
-  color: var(--accent);
-}
-
-.score-level span {
-  display: block;
-  font-size: 9px;
-  color: #64748b;
-  line-height: 1.35;
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
 }
 
 .decision-foot {
@@ -886,10 +841,11 @@ button:disabled {
 
 /* ───────────── 时间线 ───────────── */
 .timeline-list {
-  flex: 1;
+  flex: 1 1 auto;
   overflow-y: auto;
   padding: 12px 14px;
-  min-height: 120px;
+  min-height: 60px;
+  overscroll-behavior: contain;
 }
 
 .empty-hint {
@@ -1007,9 +963,12 @@ button:disabled {
 .library {
   border-top: 1px solid var(--border);
   padding: 12px 14px;
-  flex-shrink: 0;
-  max-height: 46%;
+  /* 三段式布局：判定面板与动作库按比例分配，中间时间线自适应 */
+  flex: 0 0 auto;
+  max-height: 42%;
+  min-height: 120px;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .library h3 {

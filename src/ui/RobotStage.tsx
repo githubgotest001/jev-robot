@@ -133,28 +133,10 @@ export function RobotStage({ snapshot }: RobotStageProps) {
         <g transform={headTransform}>
           {/* 身体 */}
           <g transform={`rotate(${pose.bodyLean}) translate(0 34)`}>
-            <rect x="-38" y="0" width="76" height="62" rx="16" fill="#1e293b" stroke="#475569" strokeWidth="1.5" />
-            <rect x="-26" y="10" width="52" height="14" rx="5" fill="#0f172a" />
+            <rect x="-42" y="0" width="84" height="64" rx="18" fill="#1e293b" stroke="#475569" strokeWidth="1.5" />
+            <rect x="-28" y="12" width="56" height="14" rx="5" fill="#0f172a" />
             <circle cx="0" cy="46" r="5" fill={face.accent} opacity="0.8" />
           </g>
-
-          {/* 机械臂：肩关节置于身体两侧，静止时自然下垂 */}
-          <Arm
-            shoulder={pose.shoulder}
-            elbow={pose.elbow}
-            wrist={pose.wrist}
-            gripper={pose.gripper}
-            originX={-32}
-            originY={46}
-          />
-          <Arm
-            shoulder={pose.shoulder}
-            elbow={pose.elbow}
-            wrist={pose.wrist}
-            gripper={pose.gripper}
-            originX={32}
-            originY={46}
-          />
 
           {/* 颈部与云台 */}
           <rect x="-8" y="18" width="16" height="20" rx="5" fill="#334155" />
@@ -196,6 +178,24 @@ export function RobotStage({ snapshot }: RobotStageProps) {
               </circle>
             </g>
           </g>
+
+          {/* 机械臂：画在身体与头部之上，肩关节置于躯干两侧 */}
+          <Arm
+            shoulder={pose.shoulder}
+            elbow={pose.elbow}
+            wrist={pose.wrist}
+            gripper={pose.gripper}
+            originX={-38}
+            originY={48}
+          />
+          <Arm
+            shoulder={pose.shoulder}
+            elbow={pose.elbow}
+            wrist={pose.wrist}
+            gripper={pose.gripper}
+            originX={38}
+            originY={48}
+          />
         </g>
 
         {/* 坐标读数：左右两端对齐，避免与中间的机器人重叠 */}
@@ -241,13 +241,19 @@ interface ArmProps {
  * 关节角逐级累加，elbow/wrist 在肩角基础上继续弯曲。
  */
 function Arm({ shoulder, elbow, wrist, gripper, originX, originY }: ArmProps) {
-  const upper = 32;
-  const fore = 28;
+  const upper = 28;
+  const fore = 24;
   /** 向外侧微张，避免手臂贴在躯干上 */
   const outward = originX < 0 ? -1 : 1;
-  const SPLAY = 10;
+  /** 自然外展角：静止时略微分开 */
+  const SPLAY = 16;
+  /**
+   * 抬臂越高越向外张开，避免手臂向内挤到面部。
+   * shoulder 为 0 时仅自然外展，抬到 90° 时额外外展 26°。
+   */
+  const splay = SPLAY + Math.min(26, Math.abs(shoulder) * 0.29);
 
-  const a1 = shoulder + SPLAY;
+  const a1 = shoulder + splay;
   const a2 = a1 - elbow;
   const a3 = a2 - wrist;
 
@@ -263,6 +269,8 @@ function Arm({ shoulder, elbow, wrist, gripper, originX, originY }: ArmProps) {
   const ty = wy + dy(a3) * 11;
 
   const gap = 3 + gripper * 5;
+  /** 夹爪朝向：垂直于小臂，左右手镜像 */
+  const gripperAngle = (90 - a3) * (outward < 0 ? -1 : 1);
 
   return (
     <g>
@@ -287,7 +295,7 @@ function Arm({ shoulder, elbow, wrist, gripper, originX, originY }: ArmProps) {
       />
       <circle cx={wx} cy={wy} r="4" fill="#64748b" />
       {/* 夹爪：垂直于小臂方向开合 */}
-      <g transform={`translate(${tx} ${ty}) rotate(${(90 - a3 * 180) / Math.PI} * (outward < 0 ? -1 : 1))`}>
+      <g transform={`translate(${tx} ${ty}) rotate(${gripperAngle})`}>
         <line
           x1={-gap}
           y1={-gap}

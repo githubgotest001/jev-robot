@@ -110,7 +110,6 @@ export function sanitizeConfig(config: JevConfig): JevConfig {
       autoActThreshold: clamp(Number(config.policy?.autoActThreshold), 0, 1),
       reviewThreshold: clamp(Number(config.policy?.reviewThreshold), 0, 1),
       safetyThreshold: clamp(Number(config.policy?.safetyThreshold), 0, 1),
-      clarificationThreshold: clamp(Number(config.policy?.clarificationThreshold), 0, 1),
     },
     showDebug: Boolean(config.showDebug),
     userDistanceCm: clamp(Math.round(Number(config.userDistanceCm)), 10, 500),

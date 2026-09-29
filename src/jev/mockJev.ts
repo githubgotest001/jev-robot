@@ -45,17 +45,12 @@ const NEEDS_ARM: RobotIntent[] = ['fetch', 'put_down'];
 const NEEDS_SPEAKER: RobotIntent[] = ['joke', 'sing'];
 const NEEDS_CAMERA: RobotIntent[] = ['take_photo'];
 
-const EMOTIONS = [
-  'neutral',
-  'happy',
-  'excited',
-  'curious',
-  'confused',
-  'sad',
-  'angry',
-  'sleepy',
-  'focus',
-];
+const STYLES = ['gentle', 'normal', 'lively', 'solemn'] as const;
+
+/** 表现力强的关键词 -> lively */
+const LIVELY_HINTS = ['跳舞', '舞', '庆祝', '哈哈', '开心', '太棒', '好玩', '游戏'];
+/** 克制的关键词 -> gentle */
+const GENTLE_HINTS = ['谢谢', '抱歉', '对不起', '难受', '累', '难过', '安静', '慢慢'];
 
 function matchIntent(utterance: string): RobotIntent {
   const lower = utterance.toLowerCase();
@@ -70,20 +65,11 @@ function matchIntent(utterance: string): RobotIntent {
   return best?.intent ?? 'smalltalk';
 }
 
-function matchEmotion(text: string): string {
+function matchStyle(text: string): string {
   const lower = text.toLowerCase();
-  const rules: [string[], string][] = [
-    [['生气', '气死', '烦死'], 'angry'],
-    [['难过', '好累', '压力', '哭', 'emo'], 'sad'],
-    [['开心', '高兴', '哈哈', '太棒', '喜欢'], 'happy'],
-    [['为什么', '怎么', '什么'], 'curious'],
-    [['加油', '你可以'], 'excited'],
-    [['困', '睡'], 'sleepy'],
-  ];
-  for (const [keys, label] of rules) {
-    if (keys.some((k) => lower.includes(k))) return label;
-  }
-  return 'neutral';
+  if (LIVELY_HINTS.some((k) => lower.includes(k))) return 'lively';
+  if (GENTLE_HINTS.some((k) => lower.includes(k))) return 'gentle';
+  return 'normal';
 }
 
 function choiceAnswer(
@@ -100,18 +86,6 @@ function choiceAnswer(
   return { type: 'choice', choice: picked, probabilities, confidence };
 }
 
-function scoreAnswer(levels: unknown[], score: number): JevAnswer {
-  const legend: Record<string, string> = {};
-  levels.forEach((l, i) => {
-    legend[String(i)] = String(l);
-  });
-  const probabilities: Record<string, number> = {};
-  levels.forEach((_, i) => {
-    probabilities[String(i)] = i === Math.round(score) ? 0.7 : 0.15;
-  });
-  return { type: 'score', score, legend, probabilities, confidence: 0.6 };
-}
-
 /** 模拟 Jev 评估：读取 state 与 questions，返回形状一致的响应。 */
 export function mockJevEvaluate(request: JevRequest): JevResponse {
   const state =
@@ -121,7 +95,7 @@ export function mockJevEvaluate(request: JevRequest): JevResponse {
 
   const speech = String(state.user_speech ?? '');
   const intent = matchIntent(speech);
-  const emotion = matchEmotion(speech);
+  const style = matchStyle(speech);
 
   const safety = state.safety_flags as Record<string, boolean> | undefined;
   const hardware = state.hardware as Record<string, boolean> | undefined;
@@ -136,26 +110,22 @@ export function mockJevEvaluate(request: JevRequest): JevResponse {
   if (hardware && !hardware.speaker && NEEDS_SPEAKER.includes(intent)) safe = false;
   if (hardware && !hardware.camera && NEEDS_CAMERA.includes(intent)) safe = false;
 
+  // 意图含糊时给出较低的 confidence，用于验证"反问确认"分支
   const vague = intent === 'smalltalk' || /那个|这个|看看|随便|你懂/.test(speech);
 
   const answers: Record<string, JevAnswer> = {};
   for (const [key, question] of Object.entries(request.questions)) {
-    if (question.type === 'choice') {
-      if (key === 'intent') {
-        answers[key] = choiceAnswer(intent, ROBOT_INTENTS, vague ? 0.35 : 0.6);
-      } else if (key === 'emotion') {
-        answers[key] = choiceAnswer(emotion, EMOTIONS, 0.58);
-      } else {
-        const keys = Object.keys(question.criteria);
-        answers[key] = choiceAnswer(keys[0] ?? 'unknown', keys, 0.5);
-      }
+    if (key === 'intent' && question.type === 'choice') {
+      answers[key] = choiceAnswer(intent, ROBOT_INTENTS, vague ? 0.35 : 0.8);
+    } else if (key === 'gesture_style' && question.type === 'choice') {
+      answers[key] = choiceAnswer(style, STYLES, 0.6);
+    } else if (key === 'safe_to_execute' && question.type === 'noul') {
+      answers[key] = { type: 'noul', noul: safe ? 0.88 : 0.1 };
+    } else if (question.type === 'choice') {
+      const keys = Object.keys(question.criteria);
+      answers[key] = choiceAnswer(keys[0] ?? 'unknown', keys, 0.5);
     } else if (question.type === 'noul') {
-      const noul = key === 'safe_to_execute' ? (safe ? 0.82 : 0.12) : vague ? 0.75 : 0.2;
-      answers[key] = { type: 'noul', noul };
-    } else {
-      const levels = Array.isArray(question.criteria) ? question.criteria : [];
-      const urgent = /马上|立刻|快|赶紧|停/.test(speech);
-      answers[key] = scoreAnswer(levels, urgent ? 2 : speech ? 1 : 0.4);
+      answers[key] = { type: 'noul', noul: 0.5 };
     }
   }
 

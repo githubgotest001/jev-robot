@@ -3,7 +3,10 @@ import type { ChatMessage } from '../domain/types';
 
 interface ChatPanelProps {
   messages: ChatMessage[];
+  /** 机器人是否正在执行动作（决定是否显示紧急停止） */
   busy: boolean;
+  /** 是否正在等待 Jev 判定（决定是否禁用输入、显示加载提示） */
+  deciding: boolean;
   showReasoning: boolean;
   onSend: (text: string, choiceId?: string) => void;
   onAbort: () => void;
@@ -39,6 +42,7 @@ const EMOTION_EMOJI: Record<string, string> = {
 export function ChatPanel({
   messages,
   busy,
+  deciding,
   showReasoning,
   onSend,
   onAbort,
@@ -55,7 +59,7 @@ export function ChatPanel({
 
   const submit = () => {
     const text = input.trim();
-    if (!text || busy) return;
+    if (!text || deciding) return;
     onSend(text);
     setInput('');
   };
@@ -110,7 +114,7 @@ export function ChatPanel({
                     <button
                       key={c.id}
                       className="choice-btn"
-                      disabled={busy}
+                      disabled={deciding}
                       onClick={() => onSend(c.value, c.id)}
                     >
                       {c.label}
@@ -125,19 +129,19 @@ export function ChatPanel({
           </article>
         ))}
 
-        {busy && (
+        {deciding && (
           <div className="thinking">
             <span />
             <span />
             <span />
-            JEV 决策中…
+            Jev 判定中…
           </div>
         )}
       </div>
 
       <div className="quick-row">
         {QUICK_COMMANDS.map((c) => (
-          <button key={c} className="quick-btn" disabled={busy} onClick={() => onSend(c)}>
+          <button key={c} className="quick-btn" disabled={deciding} onClick={() => onSend(c)}>
             {c}
           </button>
         ))}
@@ -151,9 +155,9 @@ export function ChatPanel({
             if (e.key === 'Enter') submit();
           }}
           placeholder="按住说话 / 用语音输入法输入…"
-          disabled={busy}
+          disabled={deciding}
         />
-        <button className="primary-btn" onClick={submit} disabled={busy || !input.trim()}>
+        <button className="primary-btn" onClick={submit} disabled={deciding || !input.trim()}>
           发送
         </button>
       </div>
