@@ -106,18 +106,18 @@ function DecisionView({ decision }: { decision: JevDecisionResult }) {
   return (
     <div className="decision-body">
       <div className="decision-head">
-        <div className="intent-tag">
+        <span className="intent-tag">
           <em>intent</em>
           <b>{decision.intent}</b>
-        </div>
-        <div className="intent-tag">
+        </span>
+        <span className="intent-tag">
           <em>style</em>
           <b>{decision.style}</b>
-        </div>
-        <div className="intent-tag">
+        </span>
+        <span className="intent-tag">
           <em>emotion</em>
           <b>{decision.emotion}</b>
-        </div>
+        </span>
         {!decision.executed && <span className="blocked-tag">已拦截</span>}
       </div>
 
@@ -190,13 +190,26 @@ function ProbBars({
     .sort((a, b) => b[1] - a[1])
     .slice(0, max);
 
+  // 以最大值作为满格基准，否则全是 0.0x 时所有条都几乎不可见
+  const peak = Math.max(...entries.map(([, v]) => v), 0.0001);
+
   return (
     <div className="prob-bars">
       {entries.map(([key, prob]) => (
-        <div key={key} className={`prob-row ${key === highlight ? 'hit' : ''}`}>
-          <span className="prob-key">{key}</span>
+        <div
+          key={key}
+          className={`prob-row ${key === highlight ? 'hit' : ''} ${prob <= 0 ? 'zero' : ''}`}
+        >
+          <span className="prob-key" title={key}>
+            {key}
+          </span>
           <div className="prob-track">
-            <div className="prob-fill" style={{ width: `${Math.max(2, prob * 100)}%` }} />
+            {prob > 0 && (
+              <div
+                className="prob-fill"
+                style={{ width: `${Math.max(3, (prob / peak) * 100)}%` }}
+              />
+            )}
           </div>
           <span className="prob-val">{prob.toFixed(2)}</span>
         </div>
