@@ -1,5 +1,8 @@
 import type { DecisionPolicy } from './jevProvider';
 import { DEFAULT_POLICY } from './jevProvider';
+import { DEFAULT_PROXY_ENDPOINT, isProxyEndpoint } from './jevTypes';
+
+export { DEFAULT_PROXY_ENDPOINT, isProxyEndpoint };
 
 /**
  * Jev 接入配置。
@@ -147,7 +150,7 @@ export const ENDPOINT_PRESETS = [
   {
     id: 'proxy',
     label: '本地代理',
-    endpoint: 'http://localhost:8787/jev/decisions',
+    endpoint: DEFAULT_PROXY_ENDPOINT,
     model: 'typesafe/jev-1.13',
     hint: '推荐，密钥留在服务端',
   },

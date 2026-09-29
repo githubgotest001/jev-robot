@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ChatMessage, Emotion, ParamMap, ParamValue, RobotAction } from './domain/types';
 import { SimulationEngine } from './engine/simulationEngine';
 import type { EngineSnapshot } from './engine/simulationEngine';
-import { loadConfig, sanitizeConfig } from './jev/config';
+import { loadConfig, sanitizeConfig, isProxyEndpoint } from './jev/config';
 import type { JevConfig } from './jev/config';
-import { JevDecisionProvider, routeAnswers } from './jev/jevProvider';
+import { JevDecisionProvider, PATH_LABEL, routeAnswers } from './jev/jevProvider';
 import type { JevDecisionResult } from './jev/jevProvider';
 import { buildJevRequest, defaultRobotContext } from './jev/robotQuestions';
 import type { RobotContext } from './jev/robotQuestions';
@@ -12,17 +12,15 @@ import { mockJevEvaluate } from './jev/mockJev';
 import { fetchProxyConfig, mergeProxyConfig } from './jev/proxyConfig';
 import { planFallback } from './jev/actionRouter';
 import { ChatPanel } from './ui/ChatPanel';
-import { ConfigPanel } from './ui/ConfigPanel';
+import { RightPanel } from './ui/RightPanel';
+import type { RightTab } from './ui/RightPanelTabs';
 import { RobotStage } from './ui/RobotStage';
-import { TimelinePanel } from './ui/TimelinePanel';
 
 let msgSeed = 0;
 function nextMsgId(): string {
   msgSeed += 1;
   return `m${msgSeed}`;
 }
-
-type Tab = 'chat' | 'config';
 
 export default function App() {
   // 引擎持有可变仿真状态，用惰性 state 保证整个生命周期只创建一次
@@ -31,7 +29,11 @@ export default function App() {
   const [snapshot, setSnapshot] = useState<EngineSnapshot>(() => engine.getSnapshot());
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [config, setConfig] = useState<JevConfig>(() => loadConfig());
-  const [tab, setTab] = useState<Tab>('chat');
+  /** 右列初始页签可由 `?tab=library` / `?tab=config` 指定，便于直接分享某个视图 */
+  const [rightTab, setRightTab] = useState<RightTab>(() => {
+    const wanted = new URLSearchParams(window.location.search).get('tab');
+    return wanted === 'library' || wanted === 'config' ? wanted : 'decision';
+  });
   const [deciding, setDeciding] = useState(false);
   /** 最近一次 Jev 判定的完整结果，供决策面板展示 */
   const [lastDecision, setLastDecision] = useState<JevDecisionResult | null>(null);
@@ -64,7 +66,15 @@ export default function App() {
         apiKey: sanitized.apiKey,
         timeoutMs: sanitized.timeoutMs,
         maxRetries: sanitized.maxRetries,
-        useProxy: sanitized.proxyManaged,
+        /**
+         * 是否走代理由「当前端点」当场判定，不能读 proxyManaged 标志。
+         *
+         * proxyManaged 只是"配置曾经由代理下发"的历史痕迹：代理会把密钥清空
+         * 并置为 true，之后用户把端点预设切成 OpenRouter，这个标志不会自己复位。
+         * 一旦拿它当判据，请求就会既不带上密钥、又发往 OpenRouter，
+         * 上游拿不到凭证只能回退到 cookie 鉴权，报 401 No cookie auth credentials found。
+         */
+        useProxy: isProxyEndpoint(sanitized.endpoint),
       },
       policy: sanitized.policy,
       model: sanitized.model,
@@ -159,10 +169,31 @@ export default function App() {
             emotion: routed.emotion,
             style: routed.style,
             executed: routed.executed,
+            path: routed.path,
+            pathLabel: PATH_LABEL[routed.path],
             actions: routed.plan.actions,
             choices: routed.plan.choices,
             raw: routed.raw,
             trace,
+            /**
+             * Mock 也给出完整的 traffic 结构，只是耗时标记为 0。
+             * 这样「原始报文」视图在离线默认模式下同样可用——
+             * 界面形状与真实模式保持一致，切到真机不会换一套逻辑。
+             */
+            traffic: {
+              url: 'mock://jev/local',
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              requestBody: JSON.stringify(request, null, 2),
+              requestJson: request,
+              status: 200,
+              responseText: JSON.stringify(response, null, 2),
+              responseJson: response,
+              totalMs: 0,
+              ttfbMs: 0,
+              attempts: 1,
+              failed: false,
+            },
             mode: 'jev',
             usage: {
               inputTokens: response.usage?.input_tokens ?? 0,
@@ -181,6 +212,8 @@ export default function App() {
           emotion: 'confused',
           style: 'normal',
           executed: true,
+          path: 'fallback',
+          pathLabel: PATH_LABEL.fallback,
           actions: plan.actions,
           choices: plan.choices,
           raw: {},
@@ -195,6 +228,25 @@ export default function App() {
     },
     [applyDecision, buildContext, deciding, messages, provider, sanitized.policy],
   );
+
+  /**
+   * 演示入口：`?ask=给我跳个舞` 打开页面即自动发一次指令。
+   * 这样某一次判定的完整概率分布可以直接分享 / 复现，
+   * 截图与录屏也不必先手点一遍。（左列页签由 `?tab=` 在初始化时决定）
+   */
+  const firedDemo = useRef(false);
+  const sendRef = useRef(handleSend);
+
+  useEffect(() => {
+    sendRef.current = handleSend;
+  }, [handleSend]);
+
+  useEffect(() => {
+    if (firedDemo.current) return;
+    firedDemo.current = true;
+    const ask = new URLSearchParams(window.location.search).get('ask');
+    if (ask) void sendRef.current(ask);
+  }, []);
 
   const handlePreviewAction = useCallback(
     (action: RobotAction) => {
@@ -222,6 +274,14 @@ export default function App() {
       ? (provider?.label ?? 'Jev 连接中…')
       : `Jev Mock 模拟 · ${sanitized.model}`;
 
+  /** 最近一次用户输入，用于在判定面板里回看"这次是拿什么判的" */
+  const lastUserText = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      if (messages[i].role === 'user') return messages[i].content;
+    }
+    return '';
+  }, [messages]);
+
   return (
     <div className="app">
       <header className="app-header">
@@ -239,44 +299,47 @@ export default function App() {
       </header>
 
       <main className="layout">
+        {/*
+          舞台独占左列、拿最大宽度：点动作库里的动作时，
+          机器人画面必须一直看得见，所以动作库不能和它抢这一列。
+        */}
         <div className="stage-col">
           <RobotStage snapshot={snapshot} />
         </div>
 
         <aside className="side-col">
-          <nav className="tabs">
-            <button className={tab === 'chat' ? 'active' : ''} onClick={() => setTab('chat')}>
-              对话
-            </button>
-            <button className={tab === 'config' ? 'active' : ''} onClick={() => setTab('config')}>
-              Jev 配置
-            </button>
-          </nav>
-
-          {tab === 'chat' ? (
-            <ChatPanel
-              messages={messages}
-              busy={snapshot.busy}
-              deciding={deciding}
-              showReasoning={sanitized.showDebug}
-              onSend={handleSend}
-              onAbort={handleAbort}
-              onReset={handleReset}
-            />
-          ) : (
-            <ConfigPanel
-              key={`${sanitized.mode}-${sanitized.model}-${sanitized.endpoint}`}
-              config={sanitized}
-              onChange={setConfig}
-            />
-          )}
+          <ChatPanel
+            messages={messages}
+            busy={snapshot.busy}
+            deciding={deciding}
+            showReasoning={sanitized.showDebug}
+            onSend={handleSend}
+            onAbort={handleAbort}
+            onReset={handleReset}
+          />
         </aside>
 
-        <div className="timeline-col">
-          <TimelinePanel
+        <div className="right-col">
+          <RightPanel
+            tab={rightTab}
+            onTabChange={setRightTab}
+            decision={lastDecision}
+            policy={sanitized.policy}
             timeline={snapshot.timeline}
             onPreview={handlePreviewAction}
-            decision={lastDecision}
+            currentActionId={snapshot.currentActionId}
+            decisionTone={snapshot.busy ? 'var(--warn)' : 'var(--ok)'}
+            config={sanitized}
+            onConfigChange={setConfig}
+            state={{
+              utterance: lastUserText,
+              userDistanceCm: sanitized.userDistanceCm,
+              environment: sanitized.environment,
+              battery: snapshot.battery,
+              busy: snapshot.busy,
+              currentActionId: snapshot.currentActionId,
+              hardware: sanitized.hardware,
+            }}
           />
         </div>
       </main>

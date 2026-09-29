@@ -76,6 +76,25 @@ export interface JevNoulAnswer {
 
 export type JevAnswer = JevChoiceAnswer | JevScoreAnswer | JevNoulAnswer;
 
+/** 本地代理的默认端点，与 server/proxy.mjs 的监听地址对应 */
+export const DEFAULT_PROXY_ENDPOINT = 'http://localhost:8787/jev/decisions';
+
+/**
+ * 是否走本地代理。
+ *
+ * 判据是「当前端点」，不是 proxyManaged 标志：后者只记录"配置曾经由代理下发"，
+ * 代理会把密钥清空并置为 true；用户之后把端点切成 OpenRouter / TypeSafe 时
+ * 它并不会自动复位。若拿它当判据，请求会既不带密钥又发往上游，
+ * 上游拿不到凭证只能回退 cookie 鉴权（401 No cookie auth credentials found）。
+ *
+ * 放在这个零依赖的类型模块里，是为了让 config.ts 与 jevClient.ts 都能引用，
+ * 又不会形成 config → jevProvider → jevClient → config 的循环依赖——
+ * 那种环在 ESM 下会表现为 DEFAULT_POLICY 尚未初始化就被读取。
+ */
+export function isProxyEndpoint(endpoint: string): boolean {
+  return endpoint.trim() === DEFAULT_PROXY_ENDPOINT;
+}
+
 /** 请求体 */
 export interface JevRequest {
   /** 形如 typesafe/jev-1.13 或 jev-latest */

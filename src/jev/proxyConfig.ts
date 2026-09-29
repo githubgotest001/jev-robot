@@ -1,4 +1,7 @@
-﻿import type { JevConfig } from './config';
+import type { JevConfig } from './config';
+import { DEFAULT_PROXY_ENDPOINT } from './jevTypes';
+
+export { DEFAULT_PROXY_ENDPOINT, isProxyEndpoint } from './jevTypes';
 
 /** 代理下发的服务端配置 */
 interface ProxyConfig {
@@ -7,9 +10,6 @@ interface ProxyConfig {
   upstream: string;
   defaultModel: string;
 }
-
-/** 默认的代理地址，与 vite dev server 的转发规则对应 */
-export const DEFAULT_PROXY_ENDPOINT = 'http://localhost:8787/jev/decisions';
 
 function proxyConfigUrl(): string {
   try {
@@ -67,12 +67,7 @@ export function mergeProxyConfig(config: JevConfig, proxy: ProxyConfig): JevConf
     model: proxy.defaultModel || config.model,
     // 前端无需持有密钥，留空由代理注入
     apiKey: '',
-    /** 标记配置来自代理，用于界面提示 */
+    /** 标记配置来自代理，用于界面提示；不要拿它当"是否走代理"的判据 */
     proxyManaged: true,
   };
-}
-
-/** 代理地址对应的预设 id，用于配置页高亮 */
-export function isProxyEndpoint(endpoint: string): boolean {
-  return endpoint === DEFAULT_PROXY_ENDPOINT;
 }

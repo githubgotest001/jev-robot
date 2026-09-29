@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { DEFAULT_CONFIG, ENDPOINT_PRESETS, clearConfig, saveConfig } from '../jev/config';
+import { DEFAULT_CONFIG, ENDPOINT_PRESETS, clearConfig, isProxyEndpoint, saveConfig } from '../jev/config';
 import type { JevConfig } from '../jev/config';
 import { fetchProxyConfig, mergeProxyConfig } from '../jev/proxyConfig';
 
@@ -177,7 +177,13 @@ export function ConfigPanel({ config, onChange }: ConfigPanelProps) {
                 className={`preset-btn ${activePreset === p.id ? 'active' : ''}`}
                 title={p.hint}
                 onClick={() =>
-                  setDraft((prev) => ({ ...prev, endpoint: p.endpoint, model: p.model }))
+                  setDraft((prev) => ({
+                    ...prev,
+                    endpoint: p.endpoint,
+                    model: p.model,
+                    // 切到代理预设才保留 .env 托管；切走就必须让用户能填密钥
+                    proxyManaged: isProxyEndpoint(p.endpoint) ? prev.proxyManaged : false,
+                  }))
                 }
               >
                 {p.label}
@@ -190,7 +196,19 @@ export function ConfigPanel({ config, onChange }: ConfigPanelProps) {
             <input
               value={draft.endpoint}
               placeholder="https://openrouter.ai/api/alpha/decisions"
-              onChange={(e) => patch('endpoint', e.target.value)}
+              onChange={(e) => {
+                const next = e.target.value;
+                /**
+                 * 手动把端点改成本地代理以外的地址时，必须同时清掉 proxyManaged。
+                 * 否则界面会继续显示"密钥由 .env 管理"而藏起输入框，
+                 * 用户既没法填密钥、请求又不带密钥，上游只会回一个看不懂的 401。
+                 */
+                setDraft((prev) => ({
+                  ...prev,
+                  endpoint: next,
+                  proxyManaged: isProxyEndpoint(next) ? prev.proxyManaged : false,
+                }));
+              }}
             />
           </label>
 
@@ -206,7 +224,12 @@ export function ConfigPanel({ config, onChange }: ConfigPanelProps) {
             />
           </label>
 
-          {draft.proxyManaged ? (
+          {/*
+            是否显示密钥输入框，取决于「当前端点是不是本地代理」这一事实，
+            而不是 proxyManaged 这个历史标志——它会在用户切走端点后残留，
+            导致输入框被藏起来、密钥又没地方填。
+          */}
+          {isProxyEndpoint(draft.endpoint) ? (
             <div className="env-managed">
               <b>API Key 由 .env 管理</b>
               <small>

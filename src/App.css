@@ -30,7 +30,8 @@ body {
   background: radial-gradient(1200px 700px at 20% -10%, #12233f 0%, var(--bg) 55%);
   color: var(--text);
   font-family: 'Inter', 'PingFang SC', 'Microsoft YaHei', system-ui, -apple-system, sans-serif;
-  font-size: 14px;
+  /* 15px 起跳：判定面板里的概率读数、动作库的动作名都靠这个基准放大 */
+  font-size: 15px;
   line-height: 1.6;
 }
 
@@ -84,7 +85,7 @@ textarea {
 
 .app-header p {
   margin: 0;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-dim);
 }
 
@@ -96,7 +97,7 @@ textarea {
   border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--panel);
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-dim);
 }
 
@@ -109,9 +110,21 @@ textarea {
   flex-shrink: 0;
 }
 
+/*
+ * 三列：舞台 · 对话 · 右列（判定 / 动作库 / 配置 三个页签）。
+ *
+ * 舞台拿最大宽度——它是要一直盯着看的实时画面，点动作库里的动作时
+ * 机器人姿态必须留在视野里，这也是动作库不放在左列的原因。
+ * 右列给足最小宽度：概率分布要摊开，动作库要能并排分组。
+ */
 .layout {
   display: grid;
-  grid-template-columns: minmax(420px, 1.35fr) minmax(330px, 1fr) minmax(280px, 0.85fr);
+  grid-template-columns: minmax(420px, 1.2fr) minmax(320px, 0.95fr) minmax(360px, 1.05fr);
+  /*
+   * 行高锁死在可用高度上：不加 minmax(0, …) 的话，
+   * 右列内容一多就会把行撑高，整页跟着出现纵向滚动。
+   */
+  grid-template-rows: minmax(0, 1fr);
   gap: 14px;
   flex: 1;
   min-height: 0;
@@ -119,13 +132,13 @@ textarea {
 
 .stage-col,
 .side-col,
-.timeline-col {
+.right-col {
   min-height: 0;
   display: flex;
   flex-direction: column;
 }
 
-@media (max-width: 1200px) {
+@media (max-width: 1280px) {
   .layout {
     grid-template-columns: 1fr;
     grid-auto-rows: minmax(420px, auto);
@@ -148,7 +161,7 @@ textarea {
 
 .panel-header h2 {
   margin: 0;
-  font-size: 13px;
+  font-size: 13.5px;
   font-weight: 650;
   letter-spacing: 0.3px;
 }
@@ -164,28 +177,58 @@ textarea {
   border-color: rgba(251, 191, 36, 0.3);
 }
 
+/*
+ * 判定区独占面板上半部分：内容多时自己滚动，
+ * 不再像以前那样被 46% 的高度硬切一刀——
+ * 概率分布被截断是"看不清"的主要来源。
+ */
 .decision-pane {
-  padding: 12px 14px;
+  padding: 13px 15px 15px;
   border-bottom: 1px solid var(--border);
-  flex: 0 1 auto;
-  max-height: 46%;
+  flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
+  /* 让 .decision-body 的百分比宽度有可靠的参照 */
+  container-type: inline-size;
 }
 
 .decision-body {
   display: flex;
   flex-direction: column;
-  gap: 11px;
-  /* 宽屏下限制内容宽度并左对齐，避免概率条被拉成横贯整屏的长条 */
-  max-width: 560px;
+  gap: 14px;
 }
 
-.decision-head {
+/* 空态：把三种提问类型的读法摊开，首次进入就有了判定面板的说明书 */
+.decision-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.decision-empty .empty-hint {
+  padding: 10px 0 4px;
+}
+
+.decision-legend {
+  margin: 0;
+  padding-left: 16px;
+  list-style: disc;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  line-height: 1.75;
+}
+
+.decision-legend b {
+  color: var(--accent);
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+}
+
+.decision-summary {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   flex-wrap: wrap;
 }
 
@@ -193,28 +236,67 @@ textarea {
 .intent-tag {
   display: inline-flex;
   align-items: baseline;
-  gap: 4px;
-  padding: 2px 7px;
+  gap: 5px;
+  padding: 3px 9px;
   background: var(--panel-2);
-  border-radius: 5px;
+  border-radius: 6px;
   border: 1px solid var(--border);
   white-space: nowrap;
 }
 
+/* 决策路径徽标：颜色对应"闸门是否放行"，是面板里第一眼要看的信息 */
+.path-tag {
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+
+.path-tag.path-direct {
+  color: var(--ok);
+  background: rgba(52, 211, 153, 0.1);
+  border-color: rgba(52, 211, 153, 0.3);
+}
+
+.path-tag.path-ask {
+  color: var(--accent-2);
+  background: rgba(56, 189, 248, 0.1);
+  border-color: rgba(56, 189, 248, 0.3);
+}
+
+.path-tag.path-unsure {
+  color: var(--warn);
+  background: rgba(251, 191, 36, 0.1);
+  border-color: rgba(251, 191, 36, 0.3);
+}
+
+.path-tag.path-blocked {
+  color: var(--danger);
+  background: rgba(248, 113, 113, 0.12);
+  border-color: rgba(248, 113, 113, 0.32);
+}
+
+.path-tag.path-fallback {
+  color: var(--text-dim);
+  background: var(--panel-2);
+  border-color: var(--border);
+}
+
 .intent-tag em {
   font-style: normal;
-  font-size: 10px;
+  font-size: 11.5px;
   color: #64748b;
 }
 
 .intent-tag b {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--accent);
   font-family: ui-monospace, monospace;
 }
 
 .blocked-tag {
-  font-size: 10.5px;
+  font-size: 12px;
   padding: 2px 8px;
   border-radius: 999px;
   background: rgba(248, 113, 113, 0.12);
@@ -225,7 +307,7 @@ textarea {
 .trace-list {
   margin: 0;
   padding-left: 16px;
-  font-size: 10.5px;
+  font-size: 12px;
   color: var(--text-dim);
   line-height: 1.7;
 }
@@ -234,34 +316,57 @@ textarea {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  margin: 0 0 5px;
-  font-size: 10.5px;
+  gap: 10px;
+  margin: 0 0 7px;
+  font-size: 12.5px;
   font-weight: 600;
   color: var(--text-dim);
   font-family: ui-monospace, monospace;
 }
 
+/* 候选被折叠时的提示，避免误以为模型只评估了这几项 */
+.prob-block .prob-cut {
+  font-style: normal;
+  font-size: 11.5px;
+  color: #64748b;
+  margin-left: 7px;
+}
+
 .prob-block .conf {
-  font-size: 9.5px;
+  font-size: 12px;
   color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.prob-block .conf.tone-mid {
+  color: var(--warn);
+}
+
+.prob-block .conf.tone-bad {
+  color: var(--danger);
 }
 
 .prob-bars {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 4px;
 }
 
 .prob-row {
   display: grid;
-  /* 标签定宽、数值定宽，中间轨道自适应；max-width 防止宽屏拉成横条 */
-  grid-template-columns: minmax(60px, 96px) minmax(0, 1fr) 40px;
+  /*
+   * 标签与数值列都收到刚好够用：数值是 XX.XX（5 字符 11.5px ≈ 34px），
+   * 标签最长 look_at / come_here（9 字符 monospace ≈ 62px）。
+   * 省下的宽度全部给中间的概率条——它是这块真正要读的东西。
+   */
+  grid-template-columns: minmax(72px, 104px) minmax(0, 1fr) 38px;
   align-items: center;
   gap: 7px;
 }
 
 .prob-key {
-  font-size: 10px;
+  font-size: 12.5px;
   font-family: ui-monospace, monospace;
   color: var(--text-dim);
   overflow: hidden;
@@ -274,19 +379,28 @@ textarea {
   font-weight: 600;
 }
 
+.prob-row.muted .prob-key {
+  font-style: italic;
+}
+
 .prob-track {
-  height: 8px;
+  position: relative;
+  height: 14px;
   /* 轨道需与面板背景明确区分，否则低概率项看不出差别 */
   background: #0a1120;
   border: 1px solid #1e293b;
-  border-radius: 4px;
+  border-radius: 5px;
   overflow: hidden;
 }
 
 .prob-fill {
+  position: relative;
+  /* 压在阈值刻度线之上：命中项本身的宽度就是"越过阈值"的可视证据，
+     若刻度线盖在填充色上，bar 会被切断成两段，反而更难读 */
+  z-index: 1;
   height: 100%;
   background: #475569;
-  border-radius: 3px;
+  border-radius: 4px;
   transition: width 0.25s ease;
 }
 
@@ -299,8 +413,22 @@ textarea {
   border-color: rgba(94, 234, 212, 0.45);
 }
 
+/*
+ * 阈值刻度线：直接画在轨道上，一眼看出选中项的权重落在哪一侧。
+ * 这是"为什么走直接执行而不是反问"的图形化答案。
+ * 露在轨道空段里的那截用虚线画，才和实心填充区分得开。
+ */
+.prob-mark {
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+  width: 0;
+  border-left: 1px dashed rgba(148, 163, 184, 0.7);
+  pointer-events: none;
+}
+
 .prob-val {
-  font-size: 10px;
+  font-size: 12.5px;
   font-family: ui-monospace, monospace;
   font-variant-numeric: tabular-nums;
   color: var(--text-dim);
@@ -309,6 +437,7 @@ textarea {
 
 .prob-row.hit .prob-val {
   color: var(--accent);
+  font-weight: 600;
 }
 
 /* 概率为 0 的选项：淡化处理，保留行以便看出"确实被评估过" */
@@ -323,28 +452,33 @@ textarea {
 
 .noul {
   display: grid;
-  grid-template-columns: minmax(80px, 132px) minmax(0, 1fr) 40px;
+  grid-template-columns: minmax(72px, 104px) minmax(0, 1fr) 38px;
   align-items: center;
   gap: 7px;
 }
 
 .noul-label {
-  font-size: 10px;
+  font-size: 12.5px;
   font-family: ui-monospace, monospace;
   color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .noul-track {
-  height: 8px;
+  position: relative;
+  height: 14px;
   background: #0a1120;
   border: 1px solid #1e293b;
-  border-radius: 4px;
+  border-radius: 5px;
   overflow: hidden;
 }
 
 .noul-fill {
   height: 100%;
-  border-radius: 3px;
+  border-radius: 4px;
+  transition: width 0.25s ease;
 }
 
 .noul-fill.ok {
@@ -355,30 +489,170 @@ textarea {
   background: var(--danger);
 }
 
+/* 0.5 中点：noul 的"不知道"，比两端更需要被看见 */
+.noul-mid {
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+  left: 50%;
+  width: 0;
+  border-left: 1px solid rgba(226, 232, 240, 0.45);
+  pointer-events: none;
+}
+
 .noul-val {
-  font-size: 10px;
+  font-size: 12.5px;
   font-family: ui-monospace, monospace;
   font-variant-numeric: tabular-nums;
   color: var(--text-dim);
   text-align: right;
 }
 
+.noul-val.ok {
+  color: var(--ok);
+}
+
+.noul-val.bad {
+  color: var(--danger);
+}
+
+/* score 档位分布：横排细柱，柱高即该档位的概率 */
+.score-rows {
+  display: flex;
+  align-items: flex-end;
+  gap: 5px;
+  height: 62px;
+}
+
+.score-row {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 4px;
+}
+
+.score-name {
+  order: 3;
+  max-width: 100%;
+  font-size: 11px;
+  font-family: ui-monospace, monospace;
+  color: #64748b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 柱子容器固定高度，柱子按概率百分比从底部长起来 */
+.score-mark {
+  order: 1;
+  flex: 1;
+  width: 100%;
+  max-width: 40px;
+  display: flex;
+  align-items: flex-end;
+  background: #0a1120;
+  border: 1px solid #1e293b;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.score-mark span {
+  width: 100%;
+  background: linear-gradient(180deg, #94a3b8, #475569);
+  transition: height 0.25s ease;
+}
+
+.score-row .prob-val {
+  order: 2;
+  font-size: 11.5px;
+  text-align: center;
+}
+
+/* decision-foot：模型名与 token 用量，属于次要信息 */
 .decision-foot {
   display: flex;
   flex-wrap: wrap;
-  gap: 9px;
-  font-size: 9.5px;
-  color: #475569;
+  gap: 10px;
+  font-size: 12px;
+  color: #64748b;
   font-family: ui-monospace, monospace;
-  padding-top: 7px;
+  padding-top: 8px;
   border-top: 1px solid var(--border);
 }
 
 .decision-error {
   margin: 0;
-  font-size: 10.5px;
+  font-size: 12.5px;
   color: var(--danger);
   line-height: 1.5;
+}
+
+/*
+ * 判定输入 state。
+ * 用 auto-fit 网格而不是单列：字段都是短值，
+ * 面板越宽就自动排得越密，不会把这块拉成一长条。
+ */
+.state-strip {
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.state-strip h5 {
+  margin: 0 0 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-dim);
+  font-family: ui-monospace, monospace;
+}
+
+.state-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 5px;
+}
+
+.state-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 9px;
+  border-radius: 6px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  font-size: 12.5px;
+  min-width: 0;
+}
+
+.state-item em {
+  font-style: normal;
+  font-size: 11.5px;
+  font-family: ui-monospace, monospace;
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+.state-item b {
+  font-weight: 550;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.state-item.ok b {
+  color: var(--ok);
+}
+
+.state-item.bad b {
+  color: var(--danger);
+}
+
+.state-item.warn b {
+  color: var(--warn);
 }
 
 /* ───────────── 配置页补充 ───────────── */
@@ -391,7 +665,7 @@ textarea {
 .preset-btn {
   flex: 1;
   padding: 5px 8px;
-  font-size: 11px;
+  font-size: 12px;
   border-radius: 7px;
   border: 1px solid var(--border);
   background: var(--panel-2);
@@ -408,7 +682,7 @@ textarea {
 
 .fieldset-note {
   margin: 0 0 10px;
-  font-size: 10.5px;
+  font-size: 12px;
   color: #64748b;
   line-height: 1.5;
 }
@@ -430,21 +704,21 @@ textarea {
 
 .env-managed b {
   display: block;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--accent);
   margin-bottom: 3px;
 }
 
 .env-managed small {
   display: block;
-  font-size: 10.5px;
+  font-size: 12px;
   color: var(--text-dim);
   line-height: 1.5;
 }
 
 .env-managed code {
   font-family: ui-monospace, monospace;
-  font-size: 10px;
+  font-size: 11.5px;
   background: rgba(0, 0, 0, 0.3);
   padding: 1px 5px;
   border-radius: 4px;
@@ -456,7 +730,7 @@ textarea {
 }
 
 .counter {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-dim);
   padding: 1px 8px;
   border: 1px solid var(--border);
@@ -489,18 +763,25 @@ textarea {
 
 .ghost-btn {
   padding: 5px 11px;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-dim);
 }
 
 .ghost-btn.sm {
   padding: 4px 9px;
-  font-size: 11px;
+  font-size: 12px;
+}
+
+/* 勾选态：用于「紧凑 / 宽松」这类开关型按钮，明确当前生效的是哪一个 */
+.ghost-btn.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(94, 234, 212, 0.08);
 }
 
 .danger-btn {
   padding: 5px 11px;
-  font-size: 12px;
+  font-size: 13px;
   border-color: #7f2d2d;
   background: #3b1414;
   color: #fca5a5;
@@ -541,7 +822,7 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-dim);
 }
 
@@ -557,13 +838,13 @@ button:disabled {
 
 .stage-action em {
   font-style: normal;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--accent);
   font-variant-numeric: tabular-nums;
 }
 
 .stage-battery {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-dim);
   display: flex;
   align-items: center;
@@ -577,7 +858,7 @@ button:disabled {
 
 .warn {
   color: var(--danger);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .stage-svg {
@@ -602,7 +883,7 @@ button:disabled {
   align-items: baseline;
   justify-content: space-between;
   gap: 6px;
-  font-size: 11px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
   color: var(--text-dim);
   background: var(--panel-2);
@@ -619,7 +900,12 @@ button:disabled {
   flex-shrink: 0;
 }
 
-/* ───────────── Tabs ───────────── */
+/* ───────────── 右列顶部页签 ───────────── */
+/*
+ * 横排放在模块顶部，与下方内容同宽同边，整块看起来是一个完整模块。
+ * 之前做成贴最左侧的竖向图标轨道，会在三栏布局里多出一条没来由的竖带，
+ * 跟舞台、对话的边框对不齐，视觉上很突兀。
+ */
 .tabs {
   display: flex;
   gap: 4px;
@@ -633,14 +919,25 @@ button:disabled {
 
 .tabs button {
   flex: 1;
-  padding: 7px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 8px;
   border: none;
   border-radius: 8px;
   background: transparent;
   color: var(--text-dim);
   cursor: pointer;
-  font-size: 13px;
+  font-size: 13.5px;
+  white-space: nowrap;
   transition: 0.15s ease;
+}
+
+.tabs button i {
+  font-style: normal;
+  font-size: 13.5px;
+  opacity: 0.85;
 }
 
 .tabs button.active {
@@ -649,10 +946,35 @@ button:disabled {
   font-weight: 600;
 }
 
+/* 判定页签上的状态点：有动作在执行时转黄，不必切回去也知道机器人在忙 */
+.tab-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* 右列容器：顶部页签 + 内容 + 常驻执行轨迹 */
+.right-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.right-panel-view {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 /* ───────────── 对话 ───────────── */
 .chat-panel,
 .config-panel,
-.timeline-panel {
+.timeline-panel,
+.library-panel {
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -660,6 +982,14 @@ button:disabled {
   border-radius: var(--radius);
   background: var(--panel);
   overflow: hidden;
+}
+
+/*
+ * 判定面板：标题栏固定，判定区吃掉剩余高度。
+ * 判定区是 flex:1，因此面板越高、概率条就越长。
+ */
+.timeline-panel {
+  min-height: 0;
 }
 
 .chat-list {
@@ -679,7 +1009,7 @@ button:disabled {
 }
 
 .empty-state .hint {
-  font-size: 12px;
+  font-size: 13px;
   color: #64748b;
 }
 
@@ -703,19 +1033,19 @@ button:disabled {
   display: grid;
   place-items: center;
   background: var(--panel-2);
-  font-size: 13px;
+  font-size: 13.5px;
   flex-shrink: 0;
 }
 
 .msg-user .msg-avatar {
   background: #1e3a5f;
   color: #93c5fd;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .msg-system {
   color: var(--warn);
-  font-size: 12px;
+  font-size: 13px;
   padding: 6px 12px;
   background: rgba(251, 191, 36, 0.08);
   border-radius: 8px;
@@ -728,7 +1058,7 @@ button:disabled {
 }
 
 .msg-source {
-  font-size: 10px;
+  font-size: 11.5px;
   color: var(--accent-2);
   background: rgba(56, 189, 248, 0.1);
   padding: 1px 6px;
@@ -756,7 +1086,7 @@ button:disabled {
 }
 
 .action-chip {
-  font-size: 10px;
+  font-size: 11.5px;
   font-family: ui-monospace, monospace;
   color: var(--accent);
   background: rgba(94, 234, 212, 0.08);
@@ -767,14 +1097,14 @@ button:disabled {
 
 .msg-reasoning {
   margin: 0 0 6px;
-  font-size: 11px;
+  font-size: 12px;
   color: #64748b;
   font-style: italic;
   padding-left: 2px;
 }
 
 .msg-latency {
-  font-size: 10px;
+  font-size: 11.5px;
   color: #475569;
   font-variant-numeric: tabular-nums;
 }
@@ -788,7 +1118,7 @@ button:disabled {
 
 .choice-btn {
   padding: 5px 12px;
-  font-size: 12px;
+  font-size: 13px;
   border-color: rgba(94, 234, 212, 0.25);
   background: rgba(94, 234, 212, 0.06);
   color: var(--accent);
@@ -799,7 +1129,7 @@ button:disabled {
   align-items: center;
   gap: 5px;
   color: var(--text-dim);
-  font-size: 12px;
+  font-size: 13px;
   padding-left: 38px;
 }
 
@@ -843,7 +1173,7 @@ button:disabled {
 
 .quick-btn {
   padding: 4px 10px;
-  font-size: 11.5px;
+  font-size: 12.5px;
   color: var(--text-dim);
 }
 
@@ -867,183 +1197,628 @@ button:disabled {
   border-color: var(--accent);
 }
 
-/* ───────────── 时间线 ───────────── */
-.timeline-list {
-  flex: 1 1 auto;
-  overflow-y: auto;
-  padding: 12px 14px;
-  min-height: 60px;
-  overscroll-behavior: contain;
+/* ───────────── 原始报文视图 ───────────── */
+/*
+ * 触发按钮放在标题栏之下、内容之上：
+ * 它是排查用途的开关，不该挤占判定内容，也不该藏进页签里找不到。
+ */
+.raw-toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 7px 14px;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 12.5px;
+  cursor: pointer;
+  text-align: left;
+  flex-shrink: 0;
+  transition: 0.15s ease;
 }
 
+.raw-toggle:hover:not(:disabled) {
+  background: var(--panel-2);
+  color: var(--accent);
+}
+
+.raw-toggle.on {
+  color: var(--accent);
+  background: var(--panel-2);
+}
+
+.raw-toggle-caret {
+  font-size: 11.5px;
+  opacity: 0.8;
+}
+
+.raw-toggle em {
+  margin-left: auto;
+  font-style: normal;
+  font-size: 11.5px;
+  font-family: ui-monospace, monospace;
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.raw {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.raw-tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.raw-tabs button {
+  /* 按内容宽度排：只有两个按钮，等分会被拉成两条长条，与下面正文不成比例 */
+  flex: 0 1 auto;
+  padding: 6px 16px;
+  font-size: 12.5px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--panel-2);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: 0.15s ease;
+}
+
+.raw-tabs button.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(94, 234, 212, 0.08);
+  font-weight: 600;
+}
+
+/* URL / 状态行 */
+.raw-url {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 9px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg-soft);
+  min-width: 0;
+}
+
+.raw-method {
+  flex-shrink: 0;
+  font-size: 11.5px;
+  font-family: ui-monospace, monospace;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--panel-2);
+  color: var(--text-dim);
+}
+
+.raw-method.ok {
+  color: var(--ok);
+  background: rgba(52, 211, 153, 0.12);
+}
+
+.raw-method.bad {
+  color: var(--danger);
+  background: rgba(248, 113, 113, 0.12);
+}
+
+.raw-url code {
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  color: var(--accent-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+}
+
+.raw-block {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.raw-block-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 9px;
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  font-family: ui-monospace, monospace;
+  color: var(--text-dim);
+}
+
+.raw-size {
+  color: #64748b;
+  font-variant-numeric: tabular-nums;
+}
+
+.raw-block-head .ghost-btn {
+  margin-left: auto;
+}
+
+/* JSON 正文：等宽、可横向滚动，行不折行以便看清结构 */
+.raw-pre {
+  margin: 0;
+  padding: 9px 11px;
+  max-height: 46vh;
+  overflow: auto;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  font-family: ui-monospace, monospace;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text);
+  white-space: pre;
+  tab-size: 2;
+}
+
+/* 三种颜色即可：配色一多，JSON 本身的结构反而被淹没 */
+.j-key {
+  color: #7dd3fc;
+}
+
+.j-str {
+  color: #86efac;
+}
+
+.j-num {
+  color: #fbbf24;
+}
+
+.j-bool {
+  color: #c084fc;
+}
+
+.j-null {
+  color: #64748b;
+}
+
+.raw-headers {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.raw-headers h5 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dim);
+  font-family: ui-monospace, monospace;
+}
+
+/* 请求头是短文本，不需要 46vh 的滚动区 */
+.raw-headers .raw-pre {
+  max-height: none;
+  padding: 7px 10px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.raw-reqid {
+  margin-left: auto;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  color: #64748b;
+  align-self: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 耗时等标量：下限压到 96px，窄列下也能保持一行四项 */
+.raw-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 6px;
+}
+
+.raw-meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 9px;
+  border-radius: 7px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+}
+
+.raw-meta-item em {
+  font-style: normal;
+  font-size: 11px;
+  color: #64748b;
+}
+
+.raw-meta-item b {
+  font-size: 13.5px;
+  font-family: ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.raw-meta-item.highlight b {
+  color: var(--accent);
+}
+
+.raw-meta-item.ok b {
+  color: var(--ok);
+}
+
+.raw-meta-item.warn b {
+  color: var(--warn);
+}
+
+.raw-meta-item.bad b {
+  color: var(--danger);
+}
+
+/* ───────────── 执行轨迹（横向时间轴） ───────────── */
 .empty-hint {
   color: #64748b;
-  font-size: 12px;
+  font-size: 13px;
   text-align: center;
   padding: 20px 0;
 }
 
-.tl-item {
+/*
+ * 执行轨迹是右列三个页签共用的页脚，所以做扁平一些：
+ * 它要一直在，又不该把判定面板和动作库的高度吃掉太多。
+ */
+.timeline-strip {
+  flex: 0 0 auto;
+  margin-top: 10px;
+  padding: 9px 12px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+.timeline-strip-head {
   display: flex;
-  gap: 10px;
-  padding-bottom: 12px;
-  position: relative;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
 }
 
-.tl-item::before {
-  content: '';
-  position: absolute;
-  left: 4px;
-  top: 14px;
-  bottom: 0;
-  width: 1px;
-  background: var(--border);
+.timeline-strip-head h3 {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 650;
+  color: var(--text-dim);
+  letter-spacing: 0.3px;
 }
 
-.tl-item:last-child::before {
-  display: none;
+/*
+ * 横向滚动而非纵向堆叠：
+ * 动作名与状态都是短文本，横排一行就能读完一串编排，
+ * 省下的垂直空间全部让给上方的页签内容。
+ */
+.timeline-track {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 2px;
+  min-height: 26px;
+}
+
+.timeline-track .empty-hint {
+  padding: 4px 0;
+  text-align: left;
+}
+
+.tl-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel-2);
+  font-size: 12.5px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.tl-chip b {
+  font-weight: 550;
+}
+
+.tl-chip em {
+  font-style: normal;
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+
+.tl-chip.running {
+  border-color: rgba(251, 191, 36, 0.45);
+  background: rgba(251, 191, 36, 0.08);
+}
+
+.tl-chip.interrupted {
+  border-color: rgba(248, 113, 113, 0.4);
+}
+
+.tl-chip.interrupted em {
+  color: var(--danger);
+}
+
+.tl-chip.failed {
+  opacity: 0.6;
 }
 
 .tl-dot {
-  width: 9px;
-  height: 9px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
-  margin-top: 5px;
   flex-shrink: 0;
   background: var(--ok);
-  z-index: 1;
 }
 
-.tl-item.running .tl-dot {
+.tl-chip.running .tl-dot {
   background: var(--warn);
   animation: pulse 1s infinite;
 }
 
-.tl-item.interrupted .tl-dot {
+.tl-chip.interrupted .tl-dot {
   background: var(--danger);
 }
 
-.tl-item.failed .tl-dot {
+.tl-chip.failed .tl-dot {
   background: #64748b;
 }
 
 @keyframes pulse {
   50% {
-    box-shadow: 0 0 0 5px rgba(251, 191, 36, 0.18);
+    box-shadow: 0 0 0 4px rgba(251, 191, 36, 0.18);
   }
 }
 
-.tl-body {
-  flex: 1;
-  min-width: 0;
+/* ───────────── 动作库（右列页签） ───────────── */
+.library-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  overflow: hidden;
+  /* 分组列宽按面板自身宽度决定，下面的 @container 查询以此为参照 */
+  container-type: inline-size;
 }
 
-.tl-head {
+.library-panel .panel-header h2 {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 8px;
 }
 
-.tl-head b {
+.lib-search {
+  width: 150px;
+  padding: 5px 10px;
   font-size: 12.5px;
-  font-weight: 600;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: var(--bg-soft);
+  outline: none;
 }
 
-.tl-head em {
+.lib-search:focus {
+  border-color: var(--accent);
+}
+
+.lib-hint {
+  margin: 0;
+  padding: 9px 14px;
+  font-size: 12px;
+  color: #64748b;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.lib-hint em {
   font-style: normal;
-  font-size: 10px;
-  color: var(--text-dim);
-}
-
-.tl-meta {
-  display: flex;
-  gap: 7px;
-  align-items: center;
-  margin-top: 1px;
-}
-
-.tl-meta code {
-  font-size: 10px;
-  font-family: ui-monospace, monospace;
   color: var(--accent-2);
 }
 
-.tl-actuators {
-  font-size: 10px;
-  color: #64748b;
-}
-
-.tl-params {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  margin-top: 3px;
-  font-size: 10px;
-  color: var(--text-dim);
-  font-family: ui-monospace, monospace;
-}
-
-.tl-params b {
+.lib-filtered {
+  margin-left: 8px;
+  font-weight: 600;
   color: var(--accent);
 }
 
-/* ───────────── 动作库 ───────────── */
-.library {
-  border-top: 1px solid var(--border);
-  padding: 12px 14px;
-  /* 三段式布局：判定面板与动作库按比例分配，中间时间线自适应 */
-  flex: 0 0 auto;
-  max-height: 42%;
-  min-height: 120px;
+/*
+ * 分组铺开：6 个执行器分组并排，每组内部纵向排卡片。
+ *
+ * 列宽下限用容器查询按「面板自身宽度」分档，而不是按视口宽度——
+ * 动作库搬进右列后可用宽度只由右列决定，再挂 viewport 断点就会算错。
+ * 排 n 列要求下限 ≤ (W − 10×(n−1)) / n：
+ * W≈440 → 三列每列 140px；W≈365 → 两列每列 177px 比三列 115px 更好读。
+ * 卡片里的长 id 靠省略号收敛，完整值都在 title 里。
+ */
+.library-groups {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
+  padding: 11px 14px 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  align-content: start;
+  gap: 12px 10px;
 }
 
-.library h3 {
-  margin: 0 0 2px;
-  font-size: 12px;
-  font-weight: 650;
+/* 宽裕时才上多列，窄一点宁可用两列换可读性 */
+@container (min-width: 390px) {
+  .library-groups {
+    /*
+     * 紧凑级卡片只有「动作名 + 时长」，最长的动作名（看向目标方向，7 字）
+     * 在 13px 下约 91px，加内边距需要约 107px 才不会省略。
+     * 104px 是刻意的折中：1600px 视口刚好排下四列，代价是个别长名省略，
+     * 完整名称仍在 title 里。想要全名不截断就切「宽松」或把窗口拉宽。
+     */
+    grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  }
 }
 
-.library .hint {
-  margin: 0 0 9px;
-  font-size: 11px;
-  color: #64748b;
-}
-
-.lib-group {
-  margin-bottom: 9px;
-}
-
-.lib-group h4 {
+.lib-section h4 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin: 0 0 5px;
-  font-size: 10.5px;
+  padding-bottom: 4px;
+  font-size: 12px;
   color: var(--text-dim);
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
+  letter-spacing: 0.4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.lib-section h4 em {
+  font-style: normal;
+  font-size: 11.5px;
+  color: #64748b;
+  font-variant-numeric: tabular-nums;
 }
 
 .lib-items {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 2px 4px;
 }
 
-.lib-btn {
-  padding: 3px 8px;
-  font-size: 11px;
-  color: var(--text-dim);
+/* 卡片基础样式：宽松级是竖排卡片，紧凑级在下方覆盖成单行 chip */
+.lib-card {
+  position: relative;
   display: flex;
-  gap: 5px;
-  align-items: baseline;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 1px;
+  padding: 7px 9px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  transition: 0.15s ease;
 }
 
-.lib-btn em {
+/*
+ * 紧凑级：卡片退化成单行小 chip，同一个分组的动作横向排开自动换行。
+ *
+ * 纵向堆叠一行一个动作时，两列也要约 737px 高，在 900px 视口下装不下；
+ * 换成 chip 流后同样的动作数只占一半高度。id 与参数属于调参时才要看的信息，
+ * 收进 title，需要时切到宽松级展开。
+ */
+.library-groups:not(.loose) .lib-card {
+  flex: 0 1 auto;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 5px;
+  padding: 2px 7px;
+  border-radius: 5px;
+}
+
+.library-groups:not(.loose) .lib-card-head {
+  width: auto;
+  min-width: 0;
+  gap: 5px;
+}
+
+.library-groups:not(.loose) .lib-card code,
+.library-groups:not(.loose) .lib-card-params {
+  display: none;
+}
+
+/* 宽松级：每行一张卡片，展开 id 与参数 */
+.library-groups.loose .lib-card {
+  padding: 7px 9px 8px;
+}
+
+.lib-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+}
+
+.lib-card-head b {
+  font-size: 13px;
+  font-weight: 550;
+  /* 允许省略号生效：flex 子项默认 min-width:auto 会撑破列宽 */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lib-card-head em {
   font-style: normal;
-  font-size: 9.5px;
+  font-size: 11px;
   color: #475569;
   font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.lib-card code {
+  font-size: 11px;
+  font-family: ui-monospace, monospace;
+  color: #475569;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lib-card-params {
+  font-size: 11px;
+  font-family: ui-monospace, monospace;
+  color: #64748b;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 正在播放的动作：高亮描边 + 底部进度条，切到动作库也能看到执行进度 */
+.lib-card.running {
+  border-color: rgba(94, 234, 212, 0.5);
+  background: rgba(94, 234, 212, 0.07);
+}
+
+.lib-card.running .lib-card-head b {
+  color: var(--accent);
+}
+
+.lib-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: rgba(94, 234, 212, 0.15);
+}
+
+.lib-progress i {
+  display: block;
+  height: 100%;
+  background: var(--accent);
 }
 
 /* ───────────── 配置面板 ───────────── */
@@ -1056,7 +1831,7 @@ button:disabled {
 
 .status-bar {
   padding: 7px 14px;
-  font-size: 12px;
+  font-size: 13px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
@@ -1089,7 +1864,7 @@ fieldset.disabled {
 }
 
 legend {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-dim);
   padding: 0 6px;
   letter-spacing: 0.5px;
@@ -1123,13 +1898,13 @@ legend {
 
 .radio-row b {
   display: block;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .radio-row small,
 .switch small {
   display: block;
-  font-size: 10.5px;
+  font-size: 12px;
   color: #64748b;
   line-height: 1.4;
 }
@@ -1143,14 +1918,14 @@ legend {
   display: flex;
   align-items: baseline;
   gap: 8px;
-  font-size: 11.5px;
+  font-size: 12.5px;
   color: var(--text-dim);
   margin-bottom: 4px;
 }
 
 .field .tip {
   font-style: normal;
-  font-size: 10px;
+  font-size: 11.5px;
   color: #64748b;
 }
 
@@ -1193,7 +1968,7 @@ legend {
   align-items: flex-start;
   cursor: pointer;
   margin-bottom: 9px;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .switch input {

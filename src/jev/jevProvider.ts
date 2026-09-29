@@ -1,14 +1,52 @@
-﻿import type { PlannedAction, QuickChoice } from '../domain/types';
+import type { PlannedAction, QuickChoice } from '../domain/types';
 import { planClarification, planFallback, planForIntent, planRefusal } from './actionRouter';
 import type { GestureStyle, PlanContext } from './actionRouter';
 import { JevClient, JevError } from './jevClient';
-import type { JevClientConfig } from './jevClient';
+import type { JevClientConfig, JevTransport } from './jevClient';
 import { QUESTION_IDS, buildJevRequest, toRobotIntent } from './robotQuestions';
 import type { RobotContext, RobotIntent } from './robotQuestions';
 import { asChoiceAnswer, asNoulAnswer } from './jevTypes';
-import type { JevAnswer, JevChoiceAnswer } from './jevTypes';
+import type { JevAnswer, JevChoiceAnswer, JevRequest, JevResponse } from './jevTypes';
 
 export type DecisionMode = 'jev' | 'fallback';
+
+/** 决策走了哪条路径，供判定面板直接展示 */
+export type DecisionPath = 'direct' | 'ask' | 'unsure' | 'blocked' | 'fallback';
+
+export const PATH_LABEL: Record<DecisionPath, string> = {
+  direct: '直接执行',
+  ask: '反问确认',
+  unsure: '按未知意图处理',
+  blocked: '安全闸门拦截',
+  fallback: '兜底编排',
+};
+
+/** 一次判定产生的原始数据，供「原始报文」视图展示 */
+export interface JevTrace {
+  /** 请求 URL */
+  url: string;
+  method: string;
+  /** 实际发送的请求头（密钥脱敏） */
+  headers: Record<string, string>;
+  /** 请求体原文 */
+  requestBody: string;
+  /** 请求体解析结果，便于按键折叠查看；解析失败为 null */
+  requestJson: JevRequest | null;
+  /** HTTP 状态码，网络层失败为 0 */
+  status: number;
+  /** 响应体原文，未经加工 */
+  responseText: string;
+  /** 响应体解析结果 */
+  responseJson: JevResponse | null;
+  /** 总耗时，含重试与退避等待 */
+  totalMs: number;
+  /** 发出到收到响应头的耗时 */
+  ttfbMs: number;
+  /** 实际发起次数，>1 表示发生过重试 */
+  attempts: number;
+  /** 调用是否失败 */
+  failed: boolean;
+}
 
 /**
  * 决策阈值策略。
@@ -40,15 +78,23 @@ export interface JevDecisionResult {
   style: GestureStyle;
   /** 是否实际执行了动作编排 */
   executed: boolean;
+  /** 决策走的分支：安全闸门 / 置信度过低 / 反问 / 直接执行 */
+  path: DecisionPath;
+  /** path 的中文说明 */
+  pathLabel: string;
   actions: PlannedAction[];
   choices: QuickChoice[];
   raw: {
     intent?: JevChoiceAnswer;
     safeToExecute?: { noul: number };
     gestureStyle?: JevChoiceAnswer;
+    /** score 类型问题的原始答案；本项目目前不提问，但协议支持，界面同样需要能渲染 */
+    score?: { score: number; legend: string[]; probabilities: Record<string, number> };
   };
   /** 决策路径说明 */
   trace: string[];
+  /** 本次调用的原始请求 / 响应 / 耗时；Mock 与降级路径同样会有 */
+  traffic?: JevTrace;
   mode: DecisionMode;
   usage?: { inputTokens: number; outputTokens: number; costUsd?: number };
   latencyMs: number;
@@ -119,6 +165,7 @@ export interface RoutedDecision {
   emotion: string;
   style: GestureStyle;
   executed: boolean;
+  path: DecisionPath;
   raw: JevDecisionResult['raw'];
 }
 
@@ -161,20 +208,25 @@ export function routeAnswers(
 
   let plan: { utterance: string; actions: PlannedAction[]; choices: QuickChoice[] };
   let executed = true;
+  let path: DecisionPath;
 
   // 决策顺序：安全 > 置信度 > 执行
   // 不确定性由 intent 的 confidence 直接表达，无需独立问题
   if (safeToExecute < policy.safetyThreshold) {
+    path = 'blocked';
     trace.push('路径：安全闸门拦截');
     plan = planRefusal(intent, planCtx);
     executed = false;
   } else if (confidence < policy.reviewThreshold) {
+    path = 'unsure';
     trace.push('路径：置信度过低，按未知意图处理');
     plan = planForIntent('unknown', emotion, planCtx);
   } else if (confidence < policy.autoActThreshold) {
+    path = 'ask';
     trace.push('路径：置信度中等，反问确认');
     plan = planClarification();
   } else {
+    path = 'direct';
     trace.push('路径：直接执行 ' + intent);
     plan = planForIntent(intent, emotion, planCtx);
   }
@@ -185,6 +237,7 @@ export function routeAnswers(
    * 此时机器人必须有反应，否则会表现为"指令被吞掉"。
    */
   if (plan.actions.length === 0) {
+    path = 'fallback';
     trace.push('编排为空，追加保底动作');
     plan = { ...plan, actions: planFallback().actions };
   }
@@ -195,6 +248,7 @@ export function routeAnswers(
     emotion,
     style,
     executed,
+    path,
     raw: {
       intent: intentAnswer ?? undefined,
       safeToExecute: safetyAnswer ?? undefined,
@@ -232,7 +286,7 @@ export class JevDecisionProvider {
     request.model = this.model;
 
     try {
-      const response = await this.client.evaluate(request);
+      const { response, transport } = await this.client.evaluateDetailed(request);
       const latencyMs = Math.round(performance.now() - started);
 
       trace.push('模型 ' + response.model);
@@ -244,10 +298,13 @@ export class JevDecisionProvider {
         emotion: routed.emotion,
         style: routed.style,
         executed: routed.executed,
+        path: routed.path,
+        pathLabel: PATH_LABEL[routed.path],
         actions: routed.plan.actions,
         choices: routed.plan.choices,
         raw: routed.raw,
         trace,
+        traffic: toTrace(request, transport, false),
         mode: 'jev',
         usage: {
           inputTokens: response.usage?.input_tokens ?? 0,
@@ -262,20 +319,54 @@ export class JevDecisionProvider {
         err instanceof JevError ? err.message + ' (HTTP ' + err.status + ')' : String(err);
       trace.push('Jev 调用失败，降级到本地规则：' + message);
       const plan = planFallback();
+      /**
+       * 失败时同样把请求留下：出错场景下"到底发了什么、上游回了什么"
+       * 恰恰是最需要看的，只给一句错误信息等于把排查线索丢掉。
+       */
+      const failed = err instanceof JevError ? err.transport : undefined;
       return {
         utterance: plan.utterance,
         intent: 'unknown',
         emotion: 'confused',
         style: 'normal',
         executed: true,
+        path: 'fallback',
+        pathLabel: PATH_LABEL.fallback,
         actions: plan.actions,
         choices: plan.choices,
         raw: {},
         trace,
+        traffic: failed ? toTrace(request, failed, true) : undefined,
         mode: 'fallback',
         latencyMs: Math.round(performance.now() - started),
         error: message,
       };
     }
   }
+}
+
+/** 把传输细节与请求体整理成界面可直接渲染的结构 */
+function toTrace(request: JevRequest, transport: JevTransport, failed: boolean): JevTrace {
+  let responseJson: JevResponse | null = null;
+  if (transport.responseText) {
+    try {
+      responseJson = JSON.parse(transport.responseText) as JevResponse;
+    } catch {
+      responseJson = null;
+    }
+  }
+  return {
+    url: transport.url,
+    method: 'POST',
+    headers: transport.headers,
+    requestBody: transport.requestBody,
+    requestJson: request,
+    status: transport.status,
+    responseText: transport.responseText,
+    responseJson,
+    totalMs: transport.totalMs,
+    ttfbMs: transport.ttfbMs,
+    attempts: transport.attempts,
+    failed,
+  };
 }
