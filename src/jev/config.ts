@@ -98,6 +98,16 @@ function clamp(v: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, v));
 }
 
+/** 校验摇摆区间：两端收敛到 0~1，且必须 low < high */
+function sanitizeBand(band: unknown, fallback: [number, number]): [number, number] {
+  if (!Array.isArray(band) || band.length !== 2) return [...fallback];
+  const low = clamp(Number(band[0]), 0, 1);
+  const high = clamp(Number(band[1]), 0, 1);
+  // 非法区间（相等或倒置）会让安全判定永远落不进任何分支，退回默认
+  if (low >= high) return [...fallback];
+  return [low, high];
+}
+
 /** 校验并归一化配置，防止非法值流入请求层 */
 export function sanitizeConfig(config: JevConfig): JevConfig {
   const d = cloneDefault();
@@ -113,6 +123,16 @@ export function sanitizeConfig(config: JevConfig): JevConfig {
       autoActThreshold: clamp(Number(config.policy?.autoActThreshold), 0, 1),
       reviewThreshold: clamp(Number(config.policy?.reviewThreshold), 0, 1),
       safetyThreshold: clamp(Number(config.policy?.safetyThreshold), 0, 1),
+      /**
+       * 摇摆区间会被持久化到 localStorage，读取时必须重新校验：
+       * 区间非法（low >= high）会让安全判定永远走不到放行分支。
+       */
+      safetyBand: sanitizeBand(config.policy?.safetyBand, DEFAULT_POLICY.safetyBand),
+      highRiskAutoActThreshold: clamp(
+        Number(config.policy?.highRiskAutoActThreshold),
+        0,
+        1,
+      ),
     },
     showDebug: Boolean(config.showDebug),
     userDistanceCm: clamp(Math.round(Number(config.userDistanceCm)), 10, 500),

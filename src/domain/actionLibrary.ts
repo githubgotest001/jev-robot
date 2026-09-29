@@ -680,7 +680,9 @@ export const ACTION_LIBRARY: RobotAction[] = [
     description: '立即停止当前所有动作，回到待机姿态。',
     actuators: ['base', 'arm', 'head'],
     durationMs: 300,
-    interruptible: false,
+    // 可打断：停止指令必须立刻生效。若标为不可打断，
+    // "停下"就会被排在正在执行的 arm.dance 之后，对移动底盘是安全问题
+    interruptible: true,
     priority: 99,
     params: [],
     keyframes: [

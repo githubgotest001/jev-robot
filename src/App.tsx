@@ -29,10 +29,12 @@ export default function App() {
   const [snapshot, setSnapshot] = useState<EngineSnapshot>(() => engine.getSnapshot());
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [config, setConfig] = useState<JevConfig>(() => loadConfig());
-  /** 右列初始页签可由 `?tab=library` / `?tab=config` 指定，便于直接分享某个视图 */
+  /** 右列初始页签可由 `?tab=library` / `?tab=config` / `?tab=docs` / `?tab=tradeoff` 指定 */
   const [rightTab, setRightTab] = useState<RightTab>(() => {
     const wanted = new URLSearchParams(window.location.search).get('tab');
-    return wanted === 'library' || wanted === 'config' ? wanted : 'decision';
+    return wanted === 'library' || wanted === 'config' || wanted === 'docs' || wanted === 'tradeoff'
+      ? wanted
+      : 'decision';
   });
   const [deciding, setDeciding] = useState(false);
   /** 最近一次 Jev 判定的完整结果，供决策面板展示 */
@@ -115,7 +117,15 @@ export default function App() {
   /** 把判定结果翻译成机器人动作与对话消息 */
   const applyDecision = useCallback(
     (result: JevDecisionResult) => {
-      if (result.actions.length > 0) engine.enqueue(result.actions);
+      /**
+       * 停止类指令走抢占：清空队列并打断当前动作。
+       * 上一版一律入队追加，导致"停下"要等前面的 dance 播完才生效——
+       * 对能移动的底盘这是安全问题。
+       * 表情动作不在其中：先回应再停，符合对话节奏。
+       */
+      if (result.actions.length > 0) {
+        engine.enqueue(result.actions, result.preempt ? 'preempt' : 'queue');
+      }
       setLastDecision(result);
       setMessages((prev) => [
         ...prev,
@@ -169,6 +179,7 @@ export default function App() {
             emotion: routed.emotion,
             style: routed.style,
             executed: routed.executed,
+            preempt: routed.preempt,
             path: routed.path,
             pathLabel: PATH_LABEL[routed.path],
             actions: routed.plan.actions,
@@ -212,6 +223,7 @@ export default function App() {
           emotion: 'confused',
           style: 'normal',
           executed: true,
+          preempt: false,
           path: 'fallback',
           pathLabel: PATH_LABEL.fallback,
           actions: plan.actions,

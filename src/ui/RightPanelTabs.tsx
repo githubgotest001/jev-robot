@@ -5,12 +5,14 @@ interface RightPanelTabsProps {
   decisionTone: string;
 }
 
-export type RightTab = 'decision' | 'library' | 'config';
+export type RightTab = 'decision' | 'library' | 'config' | 'docs' | 'tradeoff';
 
 const ITEMS: { id: RightTab; icon: string; label: string }[] = [
   { id: 'decision', icon: '◎', label: 'Jev 判定' },
   { id: 'library', icon: '▦', label: '动作库' },
   { id: 'config', icon: '⚙', label: 'Jev 配置' },
+  { id: 'docs', icon: '❋', label: 'Jev 文档' },
+  { id: 'tradeoff', icon: '⚖', label: '选型思考' },
 ];
 
 /**

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { TimelineEvent } from '../engine/simulationEngine';
 import type { DecisionPolicy, JevDecisionResult, JevTrace } from '../jev/jevProvider';
+import { inferRequestedCapabilities } from '../jev/robotQuestions';
 
 interface TimelinePanelProps {
   /** 最近一次 Jev 判定，用于展示概率分布 */
@@ -140,6 +141,9 @@ function StateStrip({ state }: { state: DecisionState }) {
     (key) => !state.hardware[key],
   );
 
+  // 与 buildState() 用同一套推断逻辑，避免面板与实际请求体说法不一致
+  const required = inferRequestedCapabilities(state.utterance).capabilities;
+
   return (
     <div className="state-strip">
       <h5>
@@ -158,6 +162,24 @@ function StateStrip({ state }: { state: DecisionState }) {
             {missing.length === 0
               ? '全部可用'
               : `缺 ${missing.map((k) => HARDWARE_LABEL[k]).join('、')}`}
+          </b>
+        </span>
+        {/*
+          requested_capabilities 是安全闸门唯一的"这件事做不做得了"依据。
+          与 hardware 并排显示，缺口的因果关系一眼可见：
+          需要的能力 ∩ 可用能力为空时，noul 就会掉下来。
+        */}
+        <span
+          className={`state-item ${
+            required.length === 0 ? '' : required.every((c) => state.hardware[c]) ? 'ok' : 'bad'
+          }`}
+          title="Jev 的多个问题在同一个 state 上并行评估，彼此看不到对方的答案，因此安全闸门读的是这个由 state 自行给出的能力清单，而不是 intent 问题的输出"
+        >
+          <em>requested_capabilities</em>
+          <b>
+            {required.length === 0
+              ? '未识别出动作请求'
+              : required.map((c) => HARDWARE_LABEL[c] ?? c).join('、')}
           </b>
         </span>
       </div>
@@ -201,6 +223,11 @@ function DecisionView({
           max={MAX_INTENT_ROWS}
           marks={[
             { value: policy.reviewThreshold, label: `反问 ${policy.reviewThreshold}` },
+            // 高风险意图（会移动、会取物）用更高的执行门槛，刻度线上标出来
+            {
+              value: policy.highRiskAutoActThreshold,
+              label: `高风险 ${policy.highRiskAutoActThreshold}`,
+            },
             { value: policy.autoActThreshold, label: `执行 ${policy.autoActThreshold}` },
           ]}
         />
@@ -213,6 +240,7 @@ function DecisionView({
           label="safe_to_execute"
           value={raw.safeToExecute.noul}
           threshold={policy.safetyThreshold}
+          band={policy.safetyBand}
         />
       )}
 
@@ -336,34 +364,58 @@ function ProbRow({
  * 盘面中点画一条标记线，因为 noul ≈ 0.5 是「模型不知道」——
  * 它是需要单独处理的第三种结果，而不是「偏向否定」。
  */
+/**
+ * noul 三态仪表。
+ *
+ * noul 的 0.5 不是"半安全"，而是模型在两个方向间摇摆——官方明确指出
+ * 该按第三种结果处理。因此这里不画单边门限，而是画出完整决策区间：
+ *   [0, low)      不安全   → 拦截
+ *   [low, high]   不知道   → 反问
+ *   (high, 1]     安全     → 放行
+ * 中间那段用斜纹标出，让"落在里面 = 会去反问"一眼可见。
+ */
 function NoulGauge({
   label,
   value,
   threshold,
+  band,
 }: {
   label: string;
   value: number;
   threshold: number;
+  band: [number, number];
 }) {
-  const good = value >= threshold;
+  const [low, high] = band;
+  const state = value < low ? 'bad' : value <= high ? 'warn' : 'ok';
+  const stateText =
+    state === 'bad' ? '不安全' : state === 'warn' ? '不确定' : '安全';
   return (
     <div className="noul">
-      <span className="noul-label" title={`门限 ${threshold}`}>
+      <span className="noul-label" title={`放行线 ${threshold} · 摇摆区间 ${low}~${high}`}>
         {label}
       </span>
       <div className="noul-track">
         <div
-          className={`noul-fill ${good ? 'ok' : 'bad'}`}
+          className={`noul-fill ${state}`}
           style={{ width: `${Math.max(1, value * 100)}%` }}
+        />
+        {/* 摇摆区间：noul 落在这里会去反问，而不是硬选 */}
+        <span
+          className="noul-band"
+          style={{ left: `${low * 100}%`, width: `${(high - low) * 100}%` }}
+          title={`摇摆区间 ${low}~${high}：模型不确定，此时反问`}
         />
         <span className="noul-mid" title="0.5 表示模型不知道" />
         <span
           className="prob-mark"
-          style={{ left: `${threshold * 100}%` }}
-          title={`门限 ${threshold}`}
+          style={{ left: `${high * 100}%` }}
+          title={`放行线 ${high}`}
         />
       </div>
-      <span className={`noul-val ${good ? 'ok' : 'bad'}`}>{value.toFixed(2)}</span>
+      <span className={`noul-val ${state}`}>
+        {value.toFixed(2)}
+        <em>{stateText}</em>
+      </span>
     </div>
   );
 }

@@ -29,6 +29,19 @@ export function ConfigPanel({ config, onChange }: ConfigPanelProps) {
     setDraft((prev) => ({ ...prev, policy: { ...prev.policy, [key]: value } }));
   };
 
+  /**
+   * 调整摇摆区间的一端，并强制 low < high。
+   * low 不得越过 high，反之亦然——区间失效会让安全判定落不进任何分支。
+   */
+  const patchBand = (edge: 'low' | 'high', value: number) => {
+    setDraft((prev) => {
+      const [lo, hi] = prev.policy.safetyBand;
+      const next: [number, number] =
+        edge === 'low' ? [Math.min(value, hi - 0.05), hi] : [lo, Math.max(value, lo + 0.05)];
+      return { ...prev, policy: { ...prev.policy, safetyBand: next } };
+    });
+  };
+
   const apply = () => {
     saveConfig(draft);
     onChange(draft);
@@ -322,6 +335,25 @@ export function ConfigPanel({ config, onChange }: ConfigPanelProps) {
 
           <label className="field">
             <span>
+              高风险执行阈值 · {draft.policy.highRiskAutoActThreshold.toFixed(2)}
+              <em className="tip">
+                会移动、取物的意图副作用更难回滚，用更严的门槛
+              </em>
+            </span>
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={draft.policy.highRiskAutoActThreshold}
+              onChange={(e) =>
+                patchPolicy('highRiskAutoActThreshold', Number(e.target.value))
+              }
+            />
+          </label>
+
+          <label className="field">
+            <span>
               安全阈值 · {draft.policy.safetyThreshold.toFixed(2)}
               <em className="tip">safe_to_execute 的 noul 低于此值拦截动作</em>
             </span>
@@ -332,6 +364,32 @@ export function ConfigPanel({ config, onChange }: ConfigPanelProps) {
               step={0.05}
               value={draft.policy.safetyThreshold}
               onChange={(e) => patchPolicy('safetyThreshold', Number(e.target.value))}
+            />
+          </label>
+
+          <label className="field">
+            <span>
+              noul 摇摆区间 · {draft.policy.safetyBand[0].toFixed(2)} ~{' '}
+              {draft.policy.safetyBand[1].toFixed(2)}
+              <em className="tip">
+                noul ≈ 0.5 表示模型没把握，落在区间内改为反问而非硬选
+              </em>
+            </span>
+            <input
+              type="range"
+              min={0}
+              max={0.9}
+              step={0.05}
+              value={draft.policy.safetyBand[0]}
+              onChange={(e) => patchBand('low', Number(e.target.value))}
+            />
+            <input
+              type="range"
+              min={0.1}
+              max={1}
+              step={0.05}
+              value={draft.policy.safetyBand[1]}
+              onChange={(e) => patchBand('high', Number(e.target.value))}
             />
           </label>
 

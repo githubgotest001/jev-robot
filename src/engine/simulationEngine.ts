@@ -83,6 +83,18 @@ const MAX_TIMELINE = 60;
  * - 参数化解算：移动/转向类动作的目标位姿由 params 决定，按进度插值到位。
  * - 可打断：abortAll 为紧急停止，普通动作可被更高优先级打断。
  */
+/**
+ * 抢占策略：决定新编排到达时如何对待队列里已有的动作。
+ *
+ * 上一版只有 queue（全部追加），导致"停下"这种高优先级指令
+ * 会被排到正在执行的 arm.dance 之后才生效——对一个能移动的机器人，
+ * "停下"必须立刻打断，而不是等动作播完。
+ * RobotAction 的 interruptible / priority 字段此前在引擎里零引用，
+ * 现在真正参与调度。
+ */
+export type EnqueueMode = 'queue' | 'preempt';
+
+/** 编排入队 */
 export class SimulationEngine {
   private pose: Pose = clonePose(NEUTRAL_POSE);
   private phase: ExecutionPhase = 'idle';
@@ -117,11 +129,46 @@ export class SimulationEngine {
     };
   }
 
-  /** 编排一串动作，追加到队列尾部 */
-  enqueue(actions: PlannedAction[]): void {
+  /**
+   * 编排一串动作。
+   *
+   * mode = 'preempt' 是紧急语义：停止指令必须无条件生效。
+   * 它绕过当前动作的 interruptible 标记——标记表达的是"这个动作中途停掉
+   * 会不会姿态突兀"，而不是"能不能拒绝一个急停"。对能移动的底盘，
+   * 让急停排队等前面的动作播完是安全问题。
+   *
+   * mode = 'queue' 是普通语义：追加到队尾。但若新编排的优先级高于
+   * 当前动作且当前动作可打断，则就地抢占——这样 priority 与 interruptible
+   * 才真正参与调度，而不是只写在动作库里当装饰。
+   */
+  enqueue(actions: PlannedAction[], mode: EnqueueMode = 'queue'): void {
     if (actions.length === 0) return;
+
+    if (mode === 'preempt') {
+      this.queue = [];
+      if (this.current) this.finishCurrent('interrupted');
+      this.phase = 'preparing';
+      this.queue.push(...actions);
+      return;
+    }
+
+    if (this.current && this.canPreemptWith(actions)) {
+      this.queue = [];
+      this.finishCurrent('interrupted');
+      this.phase = 'preparing';
+    }
+
     this.queue.push(...actions);
     if (this.phase === 'idle') this.phase = 'preparing';
+  }
+
+  /** 新编排是否足以打断当前动作：自身优先级更高，且当前动作允许被打断 */
+  private canPreemptWith(actions: PlannedAction[]): boolean {
+    if (!this.current || !this.current.action.interruptible) return false;
+    const incoming = actions
+      .map((a) => ACTION_MAP.get(a.actionId))
+      .reduce((max, a) => Math.max(max, a?.priority ?? 0), 0);
+    return incoming > this.current.action.priority;
   }
 
   /** 紧急停止：清空队列、中止当前动作并回到安全姿态 */

@@ -283,6 +283,20 @@ textarea {
   border-color: var(--border);
 }
 
+/* noul 摇摆：介于拦截与执行之间，反问确认 */
+.path-tag.path-undecided {
+  color: var(--warn);
+  background: rgba(251, 191, 36, 0.1);
+  border-color: rgba(251, 191, 36, 0.3);
+}
+
+/* 硬件受限降级：主动作没跑成，换了话术 */
+.path-tag.path-degraded {
+  color: var(--accent-2);
+  background: rgba(56, 189, 248, 0.1);
+  border-color: rgba(56, 189, 248, 0.3);
+}
+
 .intent-tag em {
   font-style: normal;
   font-size: 11.5px;
@@ -452,7 +466,8 @@ textarea {
 
 .noul {
   display: grid;
-  grid-template-columns: minmax(72px, 104px) minmax(0, 1fr) 38px;
+  /* 第三列要放得下"0.88 安全"这样的数值 + 状态词，原先 38px 会把文字挤出可视区 */
+  grid-template-columns: minmax(72px, 104px) minmax(0, 1fr) 78px;
   align-items: center;
   gap: 7px;
 }
@@ -476,6 +491,8 @@ textarea {
 }
 
 .noul-fill {
+  position: relative;
+  z-index: 1;
   height: 100%;
   border-radius: 4px;
   transition: width 0.25s ease;
@@ -487,6 +504,41 @@ textarea {
 
 .noul-fill.bad {
   background: var(--danger);
+}
+
+/* 摇摆区间：noul 落在这里会走去反问，而不是直接放行或拦截 */
+.noul-fill.warn {
+  background: var(--warn);
+}
+
+/*
+ * 区间本身画成斜纹带，浮在填充条之上。
+ * 要表达的是"这里不是安全、也不是不安全，而是模型没把握"，
+ * 因此用与两端都不同的纹理，而不是再涂一种颜色。
+ *
+ * .noul-track 设了 overflow:hidden，子元素默认按文档顺序绘制，
+ * 这里显式抬高 z-index，确保斜纹带画在填充条之上而不是被盖住。
+ */
+.noul-band {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 2;
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(251, 191, 36, 0.55) 0 3px,
+    transparent 3px 6px
+  );
+  border-left: 1px solid rgba(251, 191, 36, 0.7);
+  border-right: 1px solid rgba(251, 191, 36, 0.7);
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+/* 刻度线与中点线要压在斜纹带之上，否则会被纹理盖掉 */
+.prob-mark,
+.noul-mid {
+  z-index: 3;
 }
 
 /* 0.5 中点：noul 的"不知道"，比两端更需要被看见 */
@@ -506,6 +558,7 @@ textarea {
   font-variant-numeric: tabular-nums;
   color: var(--text-dim);
   text-align: right;
+  white-space: nowrap;
 }
 
 .noul-val.ok {
@@ -514,6 +567,18 @@ textarea {
 
 .noul-val.bad {
   color: var(--danger);
+}
+
+.noul-val.warn {
+  color: var(--warn);
+}
+
+/* 三态判定文字，紧跟在数值后面 */
+.noul-val em {
+  font-style: normal;
+  margin-left: 5px;
+  font-size: 11px;
+  opacity: 0.85;
 }
 
 /* score 档位分布：横排细柱，柱高即该档位的概率 */
@@ -653,6 +718,301 @@ textarea {
 
 .state-item.warn b {
   color: var(--warn);
+}
+
+/* ───────────── Jev 文档页签 ───────────── */
+.docs-body {
+  padding: 14px 16px 24px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.docs-intro {
+  padding-bottom: 12px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.docs-body h4 {
+  margin: 0 0 7px;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--text);
+}
+
+.docs-section {
+  margin-bottom: 18px;
+}
+
+.docs-body p {
+  margin: 0 0 6px;
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: var(--text-dim);
+}
+
+.docs-body p b {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.docs-body code {
+  font-family: ui-monospace, monospace;
+  font-size: 11.5px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--accent-2);
+}
+
+/* 补充说明：比正文更弱一级，用来放"容易踩的坑" */
+.docs-note {
+  font-size: 12px !important;
+  line-height: 1.6;
+  color: #64748b !important;
+}
+
+.docs-list {
+  margin: 0;
+  padding-left: 17px;
+}
+
+.docs-list li {
+  margin-bottom: 6px;
+  font-size: 12.5px;
+  line-height: 1.62;
+  color: var(--text-dim);
+}
+
+.docs-list li b {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* 三种提问类型：横排卡片 */
+.docs-types {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.docs-type {
+  padding: 8px 10px;
+  border-radius: 7px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  min-width: 0;
+}
+
+.docs-type-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 5px;
+}
+
+.docs-type-head code {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ok);
+}
+
+.docs-type-head span {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  text-align: right;
+}
+
+.docs-type-ret,
+.docs-type-eg {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: #64748b;
+}
+
+.docs-type-eg {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+  color: var(--text-dim);
+}
+
+/* 判定链：横向流程条 */
+.docs-flow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 8px;
+  font-size: 11.5px;
+}
+
+.docs-flow span {
+  padding: 4px 8px;
+  border-radius: 5px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.docs-flow i {
+  font-style: normal;
+  color: #475569;
+}
+
+/* 错误码表 */
+.docs-table {
+  margin-bottom: 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  overflow: hidden;
+}
+
+.docs-tr {
+  display: grid;
+  grid-template-columns: 46px 1fr auto;
+  gap: 8px;
+  padding: 5px 9px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border);
+}
+
+.docs-tr:last-child {
+  border-bottom: none;
+}
+
+.docs-th {
+  background: var(--panel-2);
+  color: #64748b;
+  font-weight: 600;
+}
+
+.docs-th span:first-child,
+.docs-tr span:first-child {
+  font-family: ui-monospace, monospace;
+  color: var(--warn);
+}
+
+/* 出处链接 */
+.docs-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.docs-links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 9px;
+  border-radius: 6px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--accent-2);
+  text-decoration: none;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.docs-links a:hover {
+  background: rgba(56, 189, 248, 0.08);
+  border-color: rgba(56, 189, 248, 0.4);
+}
+
+.docs-links a i {
+  font-style: normal;
+  font-size: 10.5px;
+  opacity: 0.75;
+}
+
+/* ───────────── 选型思考页签 ───────────── */
+/* 优劣条目：徽标在左，结论与代价在右 */
+.trade-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.trade-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 7px 9px;
+  border-radius: 7px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+}
+
+.trade-badge {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.trade-badge.pro {
+  color: var(--ok);
+  background: rgba(52, 211, 153, 0.12);
+  border: 1px solid rgba(52, 211, 153, 0.3);
+}
+
+.trade-badge.con {
+  color: var(--warn);
+  background: rgba(251, 191, 36, 0.12);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+}
+
+.trade-list b,
+.trade-next b {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+
+/* 代价说明：比结论更弱一级 */
+.trade-list em,
+.trade-next em {
+  display: block;
+  font-style: normal;
+  font-size: 11.5px;
+  line-height: 1.58;
+  color: var(--text-dim);
+}
+
+/* 后续方向：有序列表，带序号 */
+.trade-next {
+  margin: 0;
+  padding-left: 19px;
+}
+
+.trade-next li {
+  margin-bottom: 9px;
+  padding-left: 2px;
+}
+
+.trade-next li::marker {
+  color: var(--accent-2);
+  font-weight: 600;
+  font-size: 11.5px;
 }
 
 /* ───────────── 配置页补充 ───────────── */
@@ -915,10 +1275,19 @@ button:disabled {
   border-radius: var(--radius);
   margin-bottom: 10px;
   flex-shrink: 0;
+  /* 页签增至五个，窄屏下等分会把标签压到换行；允许横向滚动兜底 */
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.tabs::-webkit-scrollbar {
+  display: none;
 }
 
 .tabs button {
-  flex: 1;
+  /* min-width 保证可读性下限，flex:1 在有余量时再均分 */
+  flex: 1 0 auto;
+  white-space: nowrap;
   display: flex;
   align-items: center;
   justify-content: center;

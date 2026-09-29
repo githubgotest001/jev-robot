@@ -4,6 +4,8 @@ import type { DecisionPolicy, JevDecisionResult } from '../jev/jevProvider';
 import type { JevConfig } from '../jev/config';
 import { ActionLibrary } from './ActionLibrary';
 import { ConfigPanel } from './ConfigPanel';
+import { JevDocsPanel } from './JevDocsPanel';
+import { TradeoffPanel } from './TradeoffPanel';
 import { RightPanelTabs } from './RightPanelTabs';
 import type { RightTab } from './RightPanelTabs';
 import { ExecutionStrip, TimelinePanel } from './TimelinePanel';
@@ -62,6 +64,10 @@ export function RightPanel({
             onChange={onConfigChange}
           />
         )}
+
+        {tab === 'docs' && <JevDocsPanel />}
+
+        {tab === 'tradeoff' && <TradeoffPanel />}
       </div>
 
       {/*
