@@ -69,6 +69,7 @@ export default function App() {
         apiKey: sanitized.apiKey,
         timeoutMs: sanitized.timeoutMs,
         maxRetries: sanitized.maxRetries,
+        useProxy: sanitized.proxyManaged,
       },
       policy: sanitized.policy,
       model: sanitized.model,

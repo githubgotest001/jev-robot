@@ -65,8 +65,8 @@ export function ConfigPanel({ config, onChange }: ConfigPanelProps) {
       setStatus({ kind: 'ok', text: '当前为 Mock 模式，无需连接测试' });
       return;
     }
-    if (!draft.apiKey) {
-      setStatus({ kind: 'error', text: '未填写 API Key；若使用本地代理可留空' });
+    if (!draft.proxyManaged && !draft.apiKey) {
+      setStatus({ kind: 'error', text: '请填写 API Key，或改用 .env 管理的本地代理' });
       return;
     }
     setStatus({ kind: 'testing', text: '测试中…' });
@@ -75,13 +75,15 @@ export function ConfigPanel({ config, onChange }: ConfigPanelProps) {
     const timer = setTimeout(() => controller.abort(), draft.timeoutMs);
     const started = performance.now();
 
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (!draft.proxyManaged && draft.apiKey) {
+      headers.Authorization = `Bearer ${draft.apiKey}`;
+    }
+
     try {
       const res = await fetch(draft.endpoint, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${draft.apiKey}`,
-        },
+        headers,
         signal: controller.signal,
         body: JSON.stringify({
           model: draft.model,
@@ -204,24 +206,34 @@ export function ConfigPanel({ config, onChange }: ConfigPanelProps) {
             />
           </label>
 
-          <label className="field">
-            <span>
-              API Key
-              <em className="tip">走本地代理时留空，密钥配在服务端环境变量</em>
-            </span>
-            <div className="inline">
-              <input
-                type={showKey ? 'text' : 'password'}
-                value={draft.apiKey}
-                placeholder="sk-or-v1-..."
-                autoComplete="off"
-                onChange={(e) => patch('apiKey', e.target.value)}
-              />
-              <button className="ghost-btn sm" onClick={() => setShowKey((v) => !v)}>
-                {showKey ? '隐藏' : '显示'}
-              </button>
+          {draft.proxyManaged ? (
+            <div className="env-managed">
+              <b>API Key 由 .env 管理</b>
+              <small>
+                密钥保存在服务端，前端不持有。修改请编辑项目根目录的 .env 后重启
+                <code> npm run proxy</code>
+              </small>
             </div>
-          </label>
+          ) : (
+            <label className="field">
+              <span>
+                API Key
+                <em className="tip">直连上游时使用，密钥会出现在浏览器中</em>
+              </span>
+              <div className="inline">
+                <input
+                  type={showKey ? 'text' : 'password'}
+                  value={draft.apiKey}
+                  placeholder="sk-or-v1-..."
+                  autoComplete="off"
+                  onChange={(e) => patch('apiKey', e.target.value)}
+                />
+                <button className="ghost-btn sm" onClick={() => setShowKey((v) => !v)}>
+                  {showKey ? '隐藏' : '显示'}
+                </button>
+              </div>
+            </label>
+          )}
 
           <div className="grid-2">
             <label className="field">

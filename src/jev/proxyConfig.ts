@@ -53,13 +53,22 @@ export async function fetchProxyConfig(timeoutMs = 3000): Promise<ProxyConfig | 
   }
 }
 
-/** 把代理下发的配置合并进本地配置 */
+/**
+ * 把代理下发的配置合并进本地配置。
+ *
+ * endpoint 保持指向本地代理，不改成上游地址——
+ * 前端只与代理通信，密钥由代理从 .env 读取后注入，
+ * 既避免密钥进浏览器，也绕开浏览器直连上游的鉴权问题。
+ */
 export function mergeProxyConfig(config: JevConfig, proxy: ProxyConfig): JevConfig {
   return {
     ...config,
-    endpoint: proxy.upstream || config.endpoint,
+    endpoint: DEFAULT_PROXY_ENDPOINT,
     model: proxy.defaultModel || config.model,
-    apiKey: proxy.apiKey || config.apiKey,
+    // 前端无需持有密钥，留空由代理注入
+    apiKey: '',
+    /** 标记配置来自代理，用于界面提示 */
+    proxyManaged: true,
   };
 }
 

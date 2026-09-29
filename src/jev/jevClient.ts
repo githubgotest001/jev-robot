@@ -7,6 +7,8 @@ export interface JevClientConfig {
   apiKey: string;
   timeoutMs: number;
   maxRetries: number;
+  /** 走本地代理：密钥由代理注入，前端不发送 Authorization */
+  useProxy: boolean;
 }
 
 export class JevError extends Error {
@@ -37,10 +39,11 @@ export class JevClient {
   }
 
   async evaluate(request: JevRequest): Promise<JevResponse> {
-    const { endpoint, apiKey, timeoutMs, maxRetries } = this.config;
+    const { endpoint, apiKey, timeoutMs, maxRetries, useProxy } = this.config;
 
-    if (!apiKey) {
-      throw new JevError('未配置 API Key，请检查 JEV 配置或启动本地代理', 401);
+    // 走代理时密钥由代理从 .env 注入，前端不持有也不发送
+    if (!useProxy && !apiKey) {
+      throw new JevError('未配置 API Key，请在 .env 中填写 JEV_API_KEY', 401);
     }
 
     let lastError: JevError | null = null;
@@ -50,12 +53,16 @@ export class JevClient {
       const timer = setTimeout(() => controller.abort(), timeoutMs);
 
       try {
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+        };
+        if (!useProxy && apiKey) {
+          headers.Authorization = `Bearer ${apiKey}`;
+        }
+
         const res = await fetch(endpoint, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${apiKey}`,
-          },
+          headers,
           body: JSON.stringify(request),
           signal: controller.signal,
         });

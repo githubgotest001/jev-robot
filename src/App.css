@@ -437,6 +437,36 @@ textarea {
   margin-bottom: 9px;
 }
 
+.env-managed {
+  padding: 9px 11px;
+  border: 1px solid rgba(94, 234, 212, 0.25);
+  background: rgba(94, 234, 212, 0.06);
+  border-radius: 8px;
+  margin-bottom: 11px;
+}
+
+.env-managed b {
+  display: block;
+  font-size: 12px;
+  color: var(--accent);
+  margin-bottom: 3px;
+}
+
+.env-managed small {
+  display: block;
+  font-size: 10.5px;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+.env-managed code {
+  font-family: ui-monospace, monospace;
+  font-size: 10px;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
 .header-actions {
   display: flex;
   gap: 6px;
@@ -575,8 +605,9 @@ button:disabled {
 }
 
 .pose-readout {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  /* 固定列宽：数值位数变化时不会触发相邻列重排，避免整行抖动 */
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
   gap: 6px;
   padding: 9px 14px;
   border-top: 1px solid var(--border);
@@ -584,18 +615,25 @@ button:disabled {
 }
 
 .pose-readout span {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   color: var(--text-dim);
   background: var(--panel-2);
   padding: 2px 8px;
   border-radius: 6px;
+  /* 防止内容换行导致行高跳动 */
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 .pose-readout em {
   font-style: normal;
   color: #64748b;
-  margin-right: 5px;
+  flex-shrink: 0;
 }
 
 /* ───────────── Tabs ───────────── */

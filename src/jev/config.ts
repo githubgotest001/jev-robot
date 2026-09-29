@@ -19,8 +19,10 @@ export interface JevConfig {
   endpoint: string;
   /** 模型标识，如 typesafe/jev-1.13 或 jev-latest */
   model: string;
-  /** API Key。强烈建议留空并使用本地代理，密钥只存在服务端环境变量。 */
+  /** API Key。走本地代理时留空，由代理从 .env 注入 */
   apiKey: string;
+  /** 配置是否由本地代理下发（.env 管理），界面上只读展示 */
+  proxyManaged: boolean;
   timeoutMs: number;
   maxRetries: number;
   policy: DecisionPolicy;
@@ -34,9 +36,10 @@ export interface JevConfig {
 
 export const DEFAULT_CONFIG: JevConfig = {
   mode: 'mock',
-  endpoint: 'https://openrouter.ai/api/alpha/decisions',
+  endpoint: 'http://localhost:8787/jev/decisions',
   model: 'typesafe/jev-1.13',
   apiKey: '',
+  proxyManaged: false,
   timeoutMs: 15000,
   maxRetries: 2,
   policy: { ...DEFAULT_POLICY },
@@ -100,6 +103,7 @@ export function sanitizeConfig(config: JevConfig): JevConfig {
     endpoint: String(config.endpoint ?? d.endpoint).trim(),
     model: String(config.model ?? d.model).trim(),
     apiKey: String(config.apiKey ?? ''),
+    proxyManaged: Boolean(config.proxyManaged),
     timeoutMs: clamp(Math.round(Number(config.timeoutMs)), 1000, 120000),
     maxRetries: clamp(Math.round(Number(config.maxRetries)), 0, 5),
     policy: {
