@@ -154,7 +154,8 @@ export function routeAnswers(
     battery: ctx.battery,
     busy: ctx.busy,
     hardware: ctx.hardware,
-    holdingObject: false,
+    // 持有物由夹爪开合度推断：夹爪收紧即认为手中���物
+    holdingObject: ctx.pose.gripper > 0.5,
     style,
   };
 
@@ -176,6 +177,16 @@ export function routeAnswers(
   } else {
     trace.push('路径：直接执行 ' + intent);
     plan = planForIntent(intent, emotion, planCtx);
+  }
+
+  /**
+   * 最终兜底：编排为空时补一个保底动作。
+   * 可能原因：意图对应的编排所需硬件全被过滤（如 fetch 但机械臂不可用）。
+   * 此时机器人必须有反应，否则会表现为"指令被吞掉"。
+   */
+  if (plan.actions.length === 0) {
+    trace.push('编排为空，追加保底动作');
+    plan = { ...plan, actions: planFallback().actions };
   }
 
   return {

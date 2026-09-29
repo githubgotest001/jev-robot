@@ -9,7 +9,9 @@
     "check:css": "node scripts/check-css.mjs",
     "lint": "oxlint",
     "preview": "vite preview",
-    "proxy": "node server/proxy.mjs"
+    "proxy": "node server/proxy.mjs",
+    "test": "tsx scripts/test-jev.mjs",
+    "test:live": "tsx scripts/verify-live.mjs"
   },
   "dependencies": {
     "react": "^19.2.8",
@@ -21,6 +23,7 @@
     "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^6.1.1",
     "oxlint": "^1.81.0",
+    "tsx": "^4.23.15",
     "typescript": "~6.0.2",
     "vite": "^8.3.0"
   }

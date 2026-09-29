@@ -117,7 +117,7 @@ export function filterActions(actions: PlannedAction[], ctx: PlanContext): Plann
 const PLANS: Record<RobotIntent, IntentPlan> = {
   greet: {
     utterance: '你好呀，我在呢！',
-    actions: () => [
+    actions: (): PlannedAction[] => [
       emotionAction('happy'),
       { actionId: 'head.nod', params: { times: 2 } },
       { actionId: 'arm.wave', params: { times: 3, hand: 'right' }, durationScale: 0.9 },
@@ -130,7 +130,7 @@ const PLANS: Record<RobotIntent, IntentPlan> = {
   },
   goodbye: {
     utterance: '拜拜，记得想我哦！',
-    actions: () => [
+    actions: (): PlannedAction[] => [
       emotionAction('sad'),
       { actionId: 'arm.wave', params: { times: 3, hand: 'left' } },
       { actionId: 'head.nod', params: { times: 1 } },
@@ -142,7 +142,7 @@ const PLANS: Record<RobotIntent, IntentPlan> = {
   },
   affirm: {
     utterance: '好嘞，交给我吧！',
-    actions: () => [
+    actions: (): PlannedAction[] => [
       emotionAction('happy'),
       { actionId: 'head.nod', params: { times: 2 } },
       { actionId: 'arm.thumbs_up', params: { holdMs: 900 } },
@@ -156,15 +156,20 @@ const PLANS: Record<RobotIntent, IntentPlan> = {
   },
   stop: {
     utterance: '好的，我停下了。',
-    actions: () => [{ actionId: 'base.stop' }],
+    actions: (): PlannedAction[] => [
+      { actionId: 'base.stop' },
+      // 提示音确认指令已接收
+      { actionId: 'audio.beep', params: { count: 1 } },
+    ],
     choices: () => [
       choice('s1', '继续刚才', '继续刚才的动作'),
       choice('s2', '回到原位', '回到原来的位置'),
     ],
+    requires: ['speaker'],
   },
   come_here: {
     utterance: '来啦来啦！',
-    actions: () => [
+    actions: (): PlannedAction[] => [
       emotionAction('excited'),
       { actionId: 'head.look_at', params: { yaw: 0, pitch: 0 } },
       { actionId: 'base.move', params: { direction: 'forward', distanceCm: 40 } },
@@ -173,7 +178,7 @@ const PLANS: Record<RobotIntent, IntentPlan> = {
   },
   go_back: {
     utterance: '我回原位啦。',
-    actions: () => [
+    actions: (): PlannedAction[] => [
       emotionAction('neutral'),
       { actionId: 'base.return_home' },
       { actionId: 'head.reset' },
@@ -182,7 +187,7 @@ const PLANS: Record<RobotIntent, IntentPlan> = {
   },
   rotate: {
     utterance: '好的，我转过去看看。',
-    actions: () => [
+    actions: (): PlannedAction[] => [
       emotionAction('curious'),
       { actionId: 'base.rotate', params: { direction: 'left', angleDeg: 90 } },
       { actionId: 'head.tilt', params: { direction: 'left' } },
@@ -191,7 +196,7 @@ const PLANS: Record<RobotIntent, IntentPlan> = {
   },
   fetch: {
     utterance: '给你！接好了。',
-    actions: () => [
+    actions: (): PlannedAction[] => [
       emotionAction('happy'),
       { actionId: 'arm.pick', params: { force: 0.7 } },
       { actionId: 'arm.give', params: { holdMs: 800 } },
@@ -216,16 +221,19 @@ const PLANS: Record<RobotIntent, IntentPlan> = {
   },
   look_at: {
     utterance: '我看一眼哦。',
-    actions: () => [
+    actions: (): PlannedAction[] => [
       emotionAction('curious'),
       { actionId: 'head.look_at', params: { yaw: 45, pitch: 10 } },
+      // 手臂随之指向，强化"看向某处"的语义
+      { actionId: 'arm.point', params: { direction: 'right', holdMs: 900 } },
       { actionId: 'screen.blink', params: { times: 2 } },
     ],
     choices: () => [choice('l1', '看到什么', '你看到什么了'), choice('l2', '看我', '看着我')],
+    requires: ['arm'],
   },
   thank: {
     utterance: '不客气，这是我该做的！',
-    actions: () => [
+    actions: (): PlannedAction[] => [
       emotionAction('happy'),
       { actionId: 'head.nod', params: { times: 2 } },
       { actionId: 'arm.bow', params: { depth: 20 } },
@@ -235,7 +243,7 @@ const PLANS: Record<RobotIntent, IntentPlan> = {
   },
   praise: {
     utterance: '嘿嘿，被夸了有点不好意思！',
-    actions: () => [
+    actions: (): PlannedAction[] => [
       emotionAction('excited'),
       { actionId: 'arm.cover_face', params: { holdMs: 700 } },
       { actionId: 'audio.laugh' },
@@ -247,7 +255,7 @@ const PLANS: Record<RobotIntent, IntentPlan> = {
   },
   joke: {
     utterance: '好的，听好了：为什么机器人从不迷路？因为它们有 GPS 呀！',
-    actions: () => [
+    actions: (): PlannedAction[] => [
       emotionAction('excited'),
       { actionId: 'arm.dance', params: { intensity: 0.7 } },
       { actionId: 'audio.laugh' },
@@ -262,7 +270,7 @@ const PLANS: Record<RobotIntent, IntentPlan> = {
   },
   hug: {
     utterance: '抱一个～',
-    actions: () => [
+    actions: (): PlannedAction[] => [
       emotionAction('happy'),
       { actionId: 'arm.present', params: {} },
       { actionId: 'arm.cover_face', params: { holdMs: 600 } },
@@ -276,8 +284,8 @@ const PLANS: Record<RobotIntent, IntentPlan> = {
   },
   sing: {
     utterance: '啦啦啦～我唱得还行吧？',
-    actions: () => [
-      emotionAction('happy'),
+    actions: (): PlannedAction[] => [
+      // 唱歌时保持高亮的喜悦表情，无需再叠加情绪表情
       { actionId: 'screen.set_expression', params: { expression: 'joy', holdMs: 2500 } },
       { actionId: 'head.nod', params: { times: 2 } },
     ],
@@ -291,7 +299,7 @@ const PLANS: Record<RobotIntent, IntentPlan> = {
   },
   wake: {
     utterance: '我醒啦！',
-    actions: () => [
+    actions: (): PlannedAction[] => [
       emotionAction('excited'),
       { actionId: 'body.wake' },
       { actionId: 'screen.blink', params: { times: 2 } },
@@ -300,9 +308,9 @@ const PLANS: Record<RobotIntent, IntentPlan> = {
   },
   take_photo: {
     utterance: '好，看这边，笑一个～',
-    actions: () => [
-      emotionAction('happy'),
+    actions: (): PlannedAction[] => [
       { actionId: 'arm.present', params: {} },
+      // 拍照时切换到喜悦表情
       { actionId: 'screen.set_expression', params: { expression: 'joy', holdMs: 2500 } },
     ],
     choices: () => [choice('ph1', '再拍一张', '再拍一张'), choice('ph2', '给我看看', '给我看看照片')],
@@ -310,7 +318,7 @@ const PLANS: Record<RobotIntent, IntentPlan> = {
   },
   follow: {
     utterance: '我来跟着你！',
-    actions: () => [
+    actions: (): PlannedAction[] => [
       emotionAction('happy'),
       { actionId: 'head.look_at', params: { yaw: 0, pitch: 0 } },
       { actionId: 'base.move', params: { direction: 'forward', distanceCm: 25 } },
@@ -321,7 +329,7 @@ const PLANS: Record<RobotIntent, IntentPlan> = {
   },
   play: {
     utterance: '好耶，陪你玩！',
-    actions: () => [
+    actions: (): PlannedAction[] => [
       emotionAction('excited'),
       { actionId: 'head.tilt', params: { direction: 'right' } },
       { actionId: 'screen.blink', params: { times: 2 } },
@@ -330,7 +338,7 @@ const PLANS: Record<RobotIntent, IntentPlan> = {
   },
   ask_capability: {
     utterance: '我是 JEV-One，你的桌面伙伴！挥手、跳舞、指路、抓东西，我都能做。',
-    actions: () => [
+    actions: (): PlannedAction[] => [
       emotionAction('happy'),
       { actionId: 'arm.present', params: {} },
       { actionId: 'head.nod', params: { times: 1 } },
@@ -343,7 +351,7 @@ const PLANS: Record<RobotIntent, IntentPlan> = {
   },
   bored: {
     utterance: '有点无聊呢，我们找点事做吧？',
-    actions: () => [
+    actions: (): PlannedAction[] => [
       emotionAction('sleepy'),
       { actionId: 'arm.shrug', params: { holdMs: 700 } },
       { actionId: 'head.tilt', params: { direction: 'right' } },
@@ -356,8 +364,8 @@ const PLANS: Record<RobotIntent, IntentPlan> = {
   },
   think: {
     utterance: '让我想想……',
-    actions: () => [
-      emotionAction('focus'),
+    actions: (): PlannedAction[] => [
+      // 思考时显示加载表情，配合歪头
       { actionId: 'screen.set_expression', params: { expression: 'loading', holdMs: 2000 } },
       { actionId: 'head.look_at', params: { yaw: -35, pitch: -15 } },
       { actionId: 'arm.scratch_head' },
@@ -366,7 +374,7 @@ const PLANS: Record<RobotIntent, IntentPlan> = {
   },
   smalltalk: {
     utterance: '嗯嗯，我在听。',
-    actions: () => [
+    actions: (): PlannedAction[] => [
       emotionAction('neutral'),
       { actionId: 'head.nod', params: { times: 1 } },
       { actionId: 'body.idle_breathe', params: { cycles: 1 } },
